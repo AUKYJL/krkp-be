@@ -1,0 +1,189 @@
+// enum ActionType {
+//   LOGIN
+//   LOGOUT
+//   CREATE_TAXI_PARK
+//   UPDATE_TAXI_PARK
+//   DELETE_TAXI_PARK
+//   CREATE_CAR
+//   UPDATE_CAR
+//   DELETE_CAR
+//   INVITE_DRIVER
+//   ACCEPT_INVITATION
+//   DISMISS_DRIVER
+//   ASSIGN_CAR
+//   CREATE_WORK_DAY
+//   UPDATE_WORK_DAY
+//   CHANGE_CAR_STATE
+// }
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  DIRECTOR
+  DRIVER
+}
+
+enum CarState {
+  WORKING
+  EMERGENCY
+  REPAIR
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+
+  director Director?
+  driver   Driver?
+
+  actionLogs ActionLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Director {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  taxiParks TaxiPark[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Driver {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  passportNumber String
+  experience     Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  taxiParkId String?
+  taxiPark   TaxiPark? @relation(fields: [taxiParkId], references: [id], onDelete: SetNull)
+
+  assignedCarId String? @unique
+  assignedCar   Car?    @relation("DriverAssignedCar", fields: [assignedCarId], references: [id], onDelete: SetNull)
+
+  workDays    WorkDay[]
+  invitations DriverInvitation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TaxiPark {
+  id      String @id @default(uuid())
+  name    String
+  address String
+
+  directorId String
+  director   Director @relation(fields: [directorId], references: [id], onDelete: Cascade)
+
+  cars        Car[]
+  drivers     Driver[]
+  invitations DriverInvitation[]
+  actionLogs  ActionLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Car {
+  id String @id @default(uuid())
+
+  firm        String
+  model       String
+  type        String
+  plateNumber String   @unique
+  state       CarState @default(WORKING)
+
+  taxiParkId String
+  taxiPark   TaxiPark @relation(fields: [taxiParkId], references: [id], onDelete: Cascade)
+
+  assignedDriver Driver? @relation("DriverAssignedCar")
+
+  workDays WorkDay[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkDay {
+  id String @id @default(uuid())
+
+  workDate  DateTime
+  revenue   Decimal  @default(0)
+  carOnLine Boolean  @default(true)
+
+  driverId String
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  carId String
+  car   Car    @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([driverId, workDate])
+  @@index([workDate])
+  @@index([driverId])
+  @@index([carId])
+}
+
+model DriverInvitation {
+  id String @id @default(uuid())
+
+  taxiParkId String
+  taxiPark   TaxiPark @relation(fields: [taxiParkId], references: [id], onDelete: Cascade)
+
+  driverId String
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  status InvitationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([taxiParkId, driverId])
+}
+
+model ActionLog {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  taxiParkId String?
+  taxiPark   TaxiPark? @relation(fields: [taxiParkId], references: [id], onDelete: SetNull)
+
+  action      String
+  description String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([taxiParkId])
+  @@index([createdAt])
+}
