@@ -75,8 +75,8 @@ model Driver {
   id     String @id @default(uuid())
   userId String @unique
 
-  passportNumber String
-  experience     Int
+  passportNumber String?
+  experience     Int?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -180,6 +180,7 @@ model ActionLog {
 
   action      String
   description String?
+  metadata    Json?
 
   createdAt DateTime @default(now())
 
