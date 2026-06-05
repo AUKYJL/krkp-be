@@ -1,3 +1,4 @@
+import * as YAML from "yaml";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory, Reflector } from "@nestjs/core";
@@ -54,6 +55,10 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup("docs", app, document);
+  app.getHttpAdapter().get("/api.yaml", (req, res) => {
+    res.type("application/yaml");
+    res.send(YAML.stringify(document));
+  });
 
   await app.listen(port);
 }
