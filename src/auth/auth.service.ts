@@ -36,6 +36,9 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const existed = await this.userService.getUserByEmail(dto.email);
     if (existed) throw new BadRequestException("Email already used");
+    if (dto.password !== dto.repeatedPassword) {
+      throw new BadRequestException("Passwords do not match");
+    }
 
     const passwordHash = this.hashPassword(dto.password);
     const user = await this.userService.createUser({

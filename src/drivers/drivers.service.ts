@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { ActionLogsService } from "../action-logs/action-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { LOG_EVENTS } from "../shared/consts/log-events";
 import { AssignCarDto } from "./dto/assign-car.dto";
 import { UpdateDriverDto } from "./dto/update-driver.dto";
 
@@ -77,7 +78,7 @@ export class DriversService {
     const deleted = await this.prisma.driver.delete({ where: { id: driverId } });
     await this.actionLogs.createLog(
       userId,
-      "DISMISS_DRIVER",
+      LOG_EVENTS.DISMISS_DRIVER,
       `Dismiss driver ${driverId}`,
       driver.taxiParkId ?? undefined,
       { driverId },
@@ -107,7 +108,7 @@ export class DriversService {
 
     await this.actionLogs.createLog(
       userId,
-      "ASSIGN_CAR",
+      LOG_EVENTS.ASSIGN_CAR,
       `Assign car ${dto.carId} to driver ${driverId}`,
       driver.taxiParkId,
       { driverId, carId: dto.carId },
@@ -116,4 +117,3 @@ export class DriversService {
     return updated;
   }
 }
-

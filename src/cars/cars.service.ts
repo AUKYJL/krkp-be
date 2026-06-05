@@ -6,6 +6,7 @@ import {
 import { CarState } from "@prisma/client";
 import { ActionLogsService } from "../action-logs/action-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { LOG_EVENTS } from "../shared/consts/log-events";
 import { CreateCarDto } from "./dto/create-car.dto";
 import { UpdateCarDto } from "./dto/update-car.dto";
 
@@ -41,7 +42,7 @@ export class CarsService {
     });
     await this.actionLogs.createLog(
       userId,
-      "CREATE_CAR",
+      LOG_EVENTS.CREATE_CAR,
       `Create car ${car.plateNumber}`,
       taxiParkId,
       { carId: car.id },
@@ -88,7 +89,7 @@ export class CarsService {
     });
     await this.actionLogs.createLog(
       userId,
-      "UPDATE_CAR",
+      LOG_EVENTS.UPDATE_CAR,
       `Update car ${updated.plateNumber}`,
       car.taxiParkId,
       { carId: updated.id },
@@ -104,7 +105,7 @@ export class CarsService {
     });
     await this.actionLogs.createLog(
       userId,
-      "CHANGE_CAR_STATE",
+      LOG_EVENTS.CHANGE_CAR_STATE,
       `Change car state to ${state} for ${updated.plateNumber}`,
       car.taxiParkId,
       { carId: updated.id, state },
@@ -117,7 +118,7 @@ export class CarsService {
     const deleted = await this.prisma.car.delete({ where: { id: carId } });
     await this.actionLogs.createLog(
       userId,
-      "DELETE_CAR",
+      LOG_EVENTS.DELETE_CAR,
       `Delete car ${deleted.plateNumber}`,
       car.taxiParkId,
       { carId: deleted.id },
@@ -125,4 +126,3 @@ export class CarsService {
     return deleted;
   }
 }
-

@@ -7,6 +7,7 @@ import {
 import { CarState } from "@prisma/client";
 import { ActionLogsService } from "../action-logs/action-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { LOG_EVENTS } from "../shared/consts/log-events";
 import { CreateWorkDayDto } from "./dto/create-work-day.dto";
 import { UpdateWorkDayDto } from "./dto/update-work-day.dto";
 
@@ -61,7 +62,7 @@ export class WorkDaysService {
 
     await this.actionLogs.createLog(
       userId,
-      "CREATE_WORK_DAY",
+      LOG_EVENTS.CREATE_WORK_DAY,
       `Create work day ${workDay.id}`,
       driver.taxiParkId ?? undefined,
       { workDayId: workDay.id },
@@ -116,7 +117,7 @@ export class WorkDaysService {
 
     await this.actionLogs.createLog(
       userId,
-      "UPDATE_WORK_DAY",
+      LOG_EVENTS.UPDATE_WORK_DAY,
       `Update work day ${updated.id}`,
       driver.taxiParkId ?? undefined,
       { workDayId: updated.id },
@@ -155,4 +156,3 @@ export class WorkDaysService {
     });
   }
 }
-

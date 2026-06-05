@@ -16,8 +16,12 @@ export class RegisterDto {
   @MinLength(6)
   password: string;
 
+  @ApiProperty({ example: "password123" })
+  @IsString()
+  @MinLength(6)
+  repeatedPassword: string;
+
   @ApiProperty({ enum: ROLE, example: ROLE.DIRECTOR })
   @IsEnum(ROLE)
   role: ROLE;
 }
-

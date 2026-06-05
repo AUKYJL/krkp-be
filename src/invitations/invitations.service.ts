@@ -7,6 +7,7 @@ import {
 import { InvitationStatus } from "@prisma/client";
 import { ActionLogsService } from "../action-logs/action-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { LOG_EVENTS } from "../shared/consts/log-events";
 import { CreateDriverInvitationDto } from "./dto/create-driver-invitation.dto";
 
 @Injectable()
@@ -50,7 +51,7 @@ export class InvitationsService {
 
     await this.actionLogs.createLog(
       userId,
-      "INVITE_DRIVER",
+      LOG_EVENTS.INVITE_DRIVER,
       `Invite driver ${dto.driverId}`,
       taxiParkId,
       { invitationId: invitation.id, driverId: dto.driverId },
@@ -103,7 +104,7 @@ export class InvitationsService {
 
     await this.actionLogs.createLog(
       userId,
-      "ACCEPT_INVITATION",
+      LOG_EVENTS.ACCEPT_INVITATION,
       `Accept invitation ${invitationId}`,
       invitation.taxiParkId,
       { invitationId, driverId: invitation.driverId },
@@ -125,7 +126,7 @@ export class InvitationsService {
 
     await this.actionLogs.createLog(
       userId,
-      "REJECT_INVITATION",
+      LOG_EVENTS.REJECT_INVITATION,
       `Reject invitation ${invitationId}`,
       invitation.taxiParkId,
       { invitationId, driverId: invitation.driverId },
@@ -149,7 +150,7 @@ export class InvitationsService {
 
     await this.actionLogs.createLog(
       userId,
-      "CANCEL_INVITATION",
+      LOG_EVENTS.CANCEL_INVITATION,
       `Cancel invitation ${invitationId}`,
       invitation.taxiParkId,
       { invitationId, driverId: invitation.driverId },
@@ -158,4 +159,3 @@ export class InvitationsService {
     return deleted;
   }
 }
-

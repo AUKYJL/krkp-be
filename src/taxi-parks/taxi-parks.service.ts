@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { ActionLogsService } from "../action-logs/action-logs.service";
+import { LOG_EVENTS } from "../shared/consts/log-events";
 import { CreateTaxiParkDto } from "./dto/create-taxi-park.dto";
 import { UpdateTaxiParkDto } from "./dto/update-taxi-park.dto";
 
@@ -30,7 +31,7 @@ export class TaxiParksService {
     });
     await this.actionLogs.createLog(
       userId,
-      "CREATE_TAXI_PARK",
+      LOG_EVENTS.CREATE_TAXI_PARK,
       `Create taxi park ${taxiPark.name}`,
       taxiPark.id,
     );
@@ -61,7 +62,7 @@ export class TaxiParksService {
     });
     await this.actionLogs.createLog(
       userId,
-      "UPDATE_TAXI_PARK",
+      LOG_EVENTS.UPDATE_TAXI_PARK,
       `Update taxi park ${taxiPark.name}`,
       taxiPark.id,
     );
@@ -73,11 +74,10 @@ export class TaxiParksService {
     const taxiPark = await this.prisma.taxiPark.delete({ where: { id } });
     await this.actionLogs.createLog(
       userId,
-      "DELETE_TAXI_PARK",
+      LOG_EVENTS.DELETE_TAXI_PARK,
       `Delete taxi park ${taxiPark.name}`,
       taxiPark.id,
     );
     return taxiPark;
   }
 }
-
