@@ -7,7 +7,10 @@ import {
 import { Car, Driver, Prisma, User } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { GetTaxiParkAnalyticsQueryDto } from "./dto/get-taxi-park-analytics-query.dto";
-import { GetTaxiParkAnalyticsResponseDto } from "./dto/get-taxi-park-analytics-response.dto";
+import {
+  GetCarAnalyticsResponseDto,
+  GetTaxiParkAnalyticsResponseDto,
+} from "./dto/get-taxi-park-analytics-response.dto";
 import { GetTaxiParksAnalyticsQueryDto } from "../taxi-parks/dto/get-taxi-parks-analytics-query.dto";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -231,6 +234,12 @@ type DowntimeLossesResponse = {
   }[];
 };
 
+type CarAnalyticsRevenueByDayEntry = {
+  date: string;
+  revenue: number;
+  carOnLine: boolean;
+};
+
 @Injectable()
 export class AnalyticsService {
   constructor(private prisma: PrismaService) {}
@@ -303,6 +312,228 @@ export class AnalyticsService {
     ]);
 
     return this.buildTaxiParkAnalytics(period, drivers, cars, workDays);
+  }
+
+  async getCarAnalytics(
+    userId: string,
+    taxiParkId: string,
+    carId: string,
+    query: GetTaxiParkAnalyticsQueryDto,
+  ): Promise<GetCarAnalyticsResponseDto> {
+    const period = this.resolvePeriod(query);
+
+    const taxiPark = await this.prisma.taxiPark.findUnique({
+      where: { id: taxiParkId },
+      include: {
+        director: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!taxiPark) {
+      throw new NotFoundException("Taxi park not found");
+    }
+
+    if (taxiPark.director.userId !== userId) {
+      throw new ForbiddenException("Access to taxi park analytics is denied");
+    }
+
+    const car = await this.prisma.car.findFirst({
+      where: {
+        id: carId,
+        taxiParkId,
+      },
+    });
+
+    if (!car) {
+      throw new NotFoundException("Car not found");
+    }
+
+    const [assignedDriver, carsCount, workDays, taxiParkWorkDays] = await Promise.all([
+      this.prisma.driver.findFirst({
+        where: {
+          taxiParkId,
+          assignedCarId: carId,
+        },
+        include: {
+          user: true,
+        },
+      }),
+      this.prisma.car.count({
+        where: { taxiParkId },
+      }),
+      this.prisma.workDay.findMany({
+        where: {
+          carId,
+          workDate: {
+            gte: period.fromDate,
+            lte: period.toDate,
+          },
+          driver: {
+            taxiParkId,
+          },
+          car: {
+            taxiParkId,
+          },
+        },
+        include: {
+          driver: {
+            include: {
+              user: true,
+            },
+          },
+          car: true,
+        },
+        orderBy: {
+          workDate: "asc",
+        },
+      }),
+      this.prisma.workDay.findMany({
+        where: {
+          workDate: {
+            gte: period.fromDate,
+            lte: period.toDate,
+          },
+          driver: {
+            taxiParkId,
+          },
+          car: {
+            taxiParkId,
+          },
+        },
+        select: {
+          revenue: true,
+          carOnLine: true,
+        },
+      }),
+    ]);
+
+    let totalRevenue = 0;
+    let onlineDaysCount = 0;
+    let downtimeDaysCount = 0;
+
+    const revenueByDayMap = new Map<string, CarAnalyticsRevenueByDayEntry>();
+
+    for (const date of this.getDateRange(period.from, period.to)) {
+      revenueByDayMap.set(date, {
+        date,
+        revenue: 0,
+        carOnLine: false,
+      });
+    }
+
+    for (const workDay of workDays) {
+      const date = this.formatDate(workDay.workDate);
+      const revenue = Number(workDay.revenue);
+
+      totalRevenue += revenue;
+
+      if (workDay.carOnLine) {
+        onlineDaysCount += 1;
+      } else {
+        downtimeDaysCount += 1;
+      }
+
+      revenueByDayMap.set(date, {
+        date,
+        revenue: this.roundMoney(revenue),
+        carOnLine: workDay.carOnLine,
+      });
+    }
+
+    const workDaysCount = workDays.length;
+    const averageRevenuePerOnlineDay = this.safeDivide(totalRevenue, onlineDaysCount);
+    const utilizationRate = this.safeDivide(onlineDaysCount * 100, period.daysCount);
+    const downtimeRate = this.safeDivide(downtimeDaysCount * 100, workDaysCount);
+
+    let taxiParkTotalRevenue = 0;
+    let taxiParkOnlineDaysCount = 0;
+
+    for (const workDay of taxiParkWorkDays) {
+      taxiParkTotalRevenue += Number(workDay.revenue);
+      if (workDay.carOnLine) {
+        taxiParkOnlineDaysCount += 1;
+      }
+    }
+
+    const taxiParkAverageRevenuePerCar = this.safeDivide(
+      taxiParkTotalRevenue,
+      carsCount,
+    );
+    const taxiParkAverageRevenuePerOnlineDay = this.safeDivide(
+      taxiParkTotalRevenue,
+      taxiParkOnlineDaysCount,
+    );
+    const taxiParkAverageUtilizationRate = this.safeDivide(
+      taxiParkOnlineDaysCount * 100,
+      carsCount * period.daysCount,
+    );
+
+    return {
+      period: {
+        from: period.from,
+        to: period.to,
+        daysCount: period.daysCount,
+      },
+      car: {
+        carId: car.id,
+        firm: car.firm,
+        model: car.model,
+        plateNumber: car.plateNumber,
+        state: car.state,
+        taxiParkId: car.taxiParkId,
+        taxiParkName: taxiPark.name,
+        assignedDriver: assignedDriver
+          ? {
+              driverId: assignedDriver.id,
+              fullName: assignedDriver.user.fullName,
+            }
+          : null,
+      },
+      summary: {
+        totalRevenue: this.roundMoney(totalRevenue),
+        averageRevenuePerOnlineDay: this.roundMoney(averageRevenuePerOnlineDay),
+        onlineDaysCount,
+        downtimeDaysCount,
+        workDaysCount,
+        utilizationRate: this.roundPercent(utilizationRate),
+        downtimeRate: this.roundPercent(downtimeRate),
+        estimatedDowntimeLoss: this.roundMoney(
+          averageRevenuePerOnlineDay * downtimeDaysCount,
+        ),
+      },
+      comparison: {
+        taxiParkAverageRevenuePerCar: this.roundMoney(taxiParkAverageRevenuePerCar),
+        taxiParkAverageRevenuePerOnlineDay: this.roundMoney(
+          taxiParkAverageRevenuePerOnlineDay,
+        ),
+        taxiParkAverageUtilizationRate: this.roundPercent(
+          taxiParkAverageUtilizationRate,
+        ),
+        revenueDifferenceFromParkAverage: this.roundMoney(
+          totalRevenue - taxiParkAverageRevenuePerCar,
+        ),
+        utilizationDifferenceFromParkAverage: this.roundPercent(
+          utilizationRate - taxiParkAverageUtilizationRate,
+        ),
+      },
+      charts: {
+        revenueByDay: Array.from(revenueByDayMap.values()),
+      },
+      workDays: workDays.map((workDay) => ({
+        workDayId: workDay.id,
+        date: this.formatDate(workDay.workDate),
+        revenue: this.roundMoney(Number(workDay.revenue)),
+        carOnLine: workDay.carOnLine,
+        driver: {
+          driverId: workDay.driver.id,
+          fullName: workDay.driver.user.fullName,
+        },
+      })),
+    };
   }
 
   async driverRevenue(

@@ -184,6 +184,147 @@ export class ProblemCarAnalyticsDto {
   estimatedLoss: number;
 }
 
+export class CarAnalyticsAssignedDriverDto {
+  @ApiProperty()
+  driverId: string;
+
+  @ApiProperty()
+  fullName: string;
+}
+
+export class CarAnalyticsCarDto {
+  @ApiProperty()
+  carId: string;
+
+  @ApiProperty()
+  firm: string;
+
+  @ApiProperty()
+  model: string;
+
+  @ApiProperty()
+  plateNumber: string;
+
+  @ApiProperty({ enum: CarState })
+  state: CarState;
+
+  @ApiProperty()
+  taxiParkId: string;
+
+  @ApiProperty()
+  taxiParkName: string;
+
+  @ApiProperty({
+    type: CarAnalyticsAssignedDriverDto,
+    nullable: true,
+  })
+  assignedDriver: CarAnalyticsAssignedDriverDto | null;
+}
+
+export class CarAnalyticsSummaryDto {
+  @ApiProperty({ example: 21000.2 })
+  totalRevenue: number;
+
+  @ApiProperty({ example: 2625.03 })
+  averageRevenuePerOnlineDay: number;
+
+  @ApiProperty({ example: 8 })
+  onlineDaysCount: number;
+
+  @ApiProperty({ example: 1 })
+  downtimeDaysCount: number;
+
+  @ApiProperty({ example: 9 })
+  workDaysCount: number;
+
+  @ApiProperty({ example: 26.67 })
+  utilizationRate: number;
+
+  @ApiProperty({ example: 11.11 })
+  downtimeRate: number;
+
+  @ApiProperty({ example: 2625.03 })
+  estimatedDowntimeLoss: number;
+}
+
+export class CarAnalyticsComparisonDto {
+  @ApiProperty({ example: 18000.15 })
+  taxiParkAverageRevenuePerCar: number;
+
+  @ApiProperty({ example: 2300.11 })
+  taxiParkAverageRevenuePerOnlineDay: number;
+
+  @ApiProperty({ example: 64.44 })
+  taxiParkAverageUtilizationRate: number;
+
+  @ApiProperty({ example: 3000.05 })
+  revenueDifferenceFromParkAverage: number;
+
+  @ApiProperty({ example: -4.25 })
+  utilizationDifferenceFromParkAverage: number;
+}
+
+export class CarAnalyticsRevenueByDayPointDto {
+  @ApiProperty({ example: "2025-04-01" })
+  date: string;
+
+  @ApiProperty({ example: 3000 })
+  revenue: number;
+
+  @ApiProperty({ example: true })
+  carOnLine: boolean;
+}
+
+export class CarAnalyticsChartsDto {
+  @ApiProperty({ type: [CarAnalyticsRevenueByDayPointDto] })
+  revenueByDay: CarAnalyticsRevenueByDayPointDto[];
+}
+
+export class CarAnalyticsWorkDayDriverDto {
+  @ApiProperty()
+  driverId: string;
+
+  @ApiProperty()
+  fullName: string;
+}
+
+export class CarAnalyticsWorkDayDto {
+  @ApiProperty()
+  workDayId: string;
+
+  @ApiProperty({ example: "2025-04-01" })
+  date: string;
+
+  @ApiProperty({ example: 3000 })
+  revenue: number;
+
+  @ApiProperty({ example: true })
+  carOnLine: boolean;
+
+  @ApiProperty({ type: CarAnalyticsWorkDayDriverDto })
+  driver: CarAnalyticsWorkDayDriverDto;
+}
+
+export class GetCarAnalyticsResponseDto {
+  @ApiProperty({ type: AnalyticsPeriodDto })
+  period: AnalyticsPeriodDto;
+
+  @ApiProperty({ type: CarAnalyticsCarDto })
+  car: CarAnalyticsCarDto;
+
+  @ApiProperty({ type: CarAnalyticsSummaryDto })
+  summary: CarAnalyticsSummaryDto;
+
+  @ApiProperty({ type: CarAnalyticsComparisonDto })
+  comparison: CarAnalyticsComparisonDto;
+
+  @ApiProperty({ type: CarAnalyticsChartsDto })
+  charts: CarAnalyticsChartsDto;
+
+  @ApiProperty({ type: [CarAnalyticsWorkDayDto] })
+  workDays: CarAnalyticsWorkDayDto[];
+}
+
 export class GetTaxiParkAnalyticsResponseDto {
   @ApiProperty({ type: AnalyticsPeriodDto })
   period: AnalyticsPeriodDto;

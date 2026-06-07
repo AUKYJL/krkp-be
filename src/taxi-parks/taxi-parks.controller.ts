@@ -1,10 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../auth/decorators/roles.decorator";
+import { AnalyticsService } from "../analytics/analytics.service";
 import { ROLE } from "../shared/types/roles";
 import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
 import { GetTaxiParkAnalyticsQueryDto } from "../analytics/dto/get-taxi-park-analytics-query.dto";
-import { GetTaxiParkAnalyticsResponseDto } from "../analytics/dto/get-taxi-park-analytics-response.dto";
+import {
+  GetCarAnalyticsResponseDto,
+  GetTaxiParkAnalyticsResponseDto,
+} from "../analytics/dto/get-taxi-park-analytics-response.dto";
 import { CreateTaxiParkDto } from "./dto/create-taxi-park.dto";
 import { GetTaxiParksAnalyticsQueryDto } from "./dto/get-taxi-parks-analytics-query.dto";
 import { GetTaxiParksAnalyticsResponseDto } from "./dto/get-taxi-parks-analytics-response.dto";
@@ -20,6 +24,7 @@ export class TaxiParksController {
   constructor(
     private readonly service: TaxiParksService,
     private readonly analyticsService: TaxiParksAnalyticsService,
+    private readonly legacyAnalyticsService: AnalyticsService,
   ) {}
 
   @Post()
@@ -62,6 +67,23 @@ export class TaxiParksController {
     return this.analyticsService.getTaxiParkAnalytics(
       req.currentUser.id,
       taxiParkId,
+      query,
+    );
+  }
+
+  @Get(":taxiParkId/cars/:carId/analytics")
+  @ApiOkResponse({ type: GetCarAnalyticsResponseDto })
+  @ApiOperation({ summary: "Аналитика по конкретному автомобилю за период" })
+  getCarAnalytics(
+    @Req() req: RequestWithCurrentUser,
+    @Param("taxiParkId") taxiParkId: string,
+    @Param("carId") carId: string,
+    @Query() query: GetTaxiParkAnalyticsQueryDto,
+  ) {
+    return this.legacyAnalyticsService.getCarAnalytics(
+      req.currentUser.id,
+      taxiParkId,
+      carId,
       query,
     );
   }
