@@ -93,6 +93,8 @@ model Driver {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([taxiParkId])
 }
 
 model TaxiPark {
@@ -110,6 +112,8 @@ model TaxiPark {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([directorId])
 }
 
 model Car {
@@ -130,6 +134,9 @@ model Car {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([taxiParkId])
+  @@index([firm])
 }
 
 model WorkDay {
@@ -152,6 +159,8 @@ model WorkDay {
   @@index([workDate])
   @@index([driverId])
   @@index([carId])
+  @@index([driverId, workDate])
+  @@index([carId, workDate])
 }
 
 model DriverInvitation {

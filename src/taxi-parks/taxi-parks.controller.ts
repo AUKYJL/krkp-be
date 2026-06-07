@@ -1,10 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { ROLE } from "../shared/types/roles";
 import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
+import { GetTaxiParkAnalyticsQueryDto } from "../analytics/dto/get-taxi-park-analytics-query.dto";
+import { GetTaxiParkAnalyticsResponseDto } from "../analytics/dto/get-taxi-park-analytics-response.dto";
 import { CreateTaxiParkDto } from "./dto/create-taxi-park.dto";
+import { GetTaxiParksAnalyticsQueryDto } from "./dto/get-taxi-parks-analytics-query.dto";
+import { GetTaxiParksAnalyticsResponseDto } from "./dto/get-taxi-parks-analytics-response.dto";
 import { UpdateTaxiParkDto } from "./dto/update-taxi-park.dto";
+import { TaxiParksAnalyticsService } from "./taxi-parks-analytics.service";
 import { TaxiParksService } from "./taxi-parks.service";
 
 @ApiTags("taxi-parks")
@@ -12,7 +17,10 @@ import { TaxiParksService } from "./taxi-parks.service";
 @Roles(ROLE.DIRECTOR)
 @Controller("taxi-parks")
 export class TaxiParksController {
-  constructor(private service: TaxiParksService) {}
+  constructor(
+    private readonly service: TaxiParksService,
+    private readonly analyticsService: TaxiParksAnalyticsService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: "Создать таксопарк" })
@@ -31,6 +39,31 @@ export class TaxiParksController {
   @ApiOperation({ summary: "Текущий таксопарк водителя" })
   getMe(@Req() req: RequestWithCurrentUser) {
     return this.service.getMe(req.currentUser.id);
+  }
+
+  @Get("analytics")
+  @ApiOkResponse({ type: GetTaxiParksAnalyticsResponseDto })
+  @ApiOperation({ summary: "Общая аналитика по всем таксопаркам директора" })
+  getAllTaxiParksAnalytics(
+    @Req() req: RequestWithCurrentUser,
+    @Query() query: GetTaxiParksAnalyticsQueryDto,
+  ) {
+    return this.analyticsService.getAllTaxiParksAnalytics(req.currentUser.id, query);
+  }
+
+  @Get(":taxiParkId/analytics")
+  @ApiOkResponse({ type: GetTaxiParkAnalyticsResponseDto })
+  @ApiOperation({ summary: "Аналитика по конкретному таксопарку за период" })
+  getTaxiParkAnalytics(
+    @Req() req: RequestWithCurrentUser,
+    @Param("taxiParkId") taxiParkId: string,
+    @Query() query: GetTaxiParkAnalyticsQueryDto,
+  ) {
+    return this.analyticsService.getTaxiParkAnalytics(
+      req.currentUser.id,
+      taxiParkId,
+      query,
+    );
   }
 
   @Get(":id")
