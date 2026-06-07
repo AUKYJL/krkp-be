@@ -7,8 +7,10 @@ import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
 import { GetTaxiParkAnalyticsQueryDto } from "../analytics/dto/get-taxi-park-analytics-query.dto";
 import {
   GetCarAnalyticsResponseDto,
+  GetDriverAnalyticsResponseDto,
   GetTaxiParkAnalyticsResponseDto,
 } from "../analytics/dto/get-taxi-park-analytics-response.dto";
+import { GetDriverAnalyticsQueryDto } from "../analytics/dto/get-driver-analytics-query.dto";
 import { CreateTaxiParkDto } from "./dto/create-taxi-park.dto";
 import { GetTaxiParksAnalyticsQueryDto } from "./dto/get-taxi-parks-analytics-query.dto";
 import { GetTaxiParksAnalyticsResponseDto } from "./dto/get-taxi-parks-analytics-response.dto";
@@ -84,6 +86,23 @@ export class TaxiParksController {
       req.currentUser.id,
       taxiParkId,
       carId,
+      query,
+    );
+  }
+
+  @Get(":taxiParkId/drivers/:driverId/analytics")
+  @ApiOkResponse({ type: GetDriverAnalyticsResponseDto })
+  @ApiOperation({ summary: "Аналитика по конкретному водителю за период" })
+  getDriverAnalytics(
+    @Req() req: RequestWithCurrentUser,
+    @Param("taxiParkId") taxiParkId: string,
+    @Param("driverId") driverId: string,
+    @Query() query: GetDriverAnalyticsQueryDto,
+  ) {
+    return this.legacyAnalyticsService.getDriverAnalytics(
+      req.currentUser.id,
+      taxiParkId,
+      driverId,
       query,
     );
   }
