@@ -38,6 +38,18 @@ export class TaxiParksService {
     return taxiPark;
   }
 
+  async getMe(userId: string) {
+    const driver = await this.prisma.driver.findUnique({
+      where: { userId },
+      include: { taxiPark: true },
+    });
+    if (!driver) throw new ForbiddenException("Only driver allowed");
+    if (!driver.taxiPark) {
+      throw new NotFoundException("Driver is not assigned to a taxi park");
+    }
+    return driver.taxiPark;
+  }
+
   async listMine(userId: string) {
     const directorId = await this.getDirectorIdByUserId(userId);
     return this.prisma.taxiPark.findMany({

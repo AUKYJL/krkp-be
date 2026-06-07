@@ -26,6 +26,13 @@ export class TaxiParksController {
     return this.service.listMine(req.currentUser.id);
   }
 
+  @Get("me")
+  @Roles(ROLE.DRIVER)
+  @ApiOperation({ summary: "Текущий таксопарк водителя" })
+  getMe(@Req() req: RequestWithCurrentUser) {
+    return this.service.getMe(req.currentUser.id);
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Получить таксопарк" })
   get(@Req() req: RequestWithCurrentUser, @Param("id") id: string) {
@@ -49,4 +56,3 @@ export class TaxiParksController {
     return this.service.remove(req.currentUser.id, id);
   }
 }
-
