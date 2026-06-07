@@ -8,6 +8,7 @@ import { ActionLogsService } from "../action-logs/action-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LOG_EVENTS } from "../shared/consts/log-events";
 import { AssignCarDto } from "./dto/assign-car.dto";
+import { SearchDriversQueryDto } from "./dto/search-drivers-query.dto";
 import { UpdateDriverDto } from "./dto/update-driver.dto";
 
 @Injectable()
@@ -47,6 +48,51 @@ export class DriversService {
       orderBy: { createdAt: "desc" },
       include: { user: { select: { id: true, fullName: true, email: true } } },
     });
+  }
+
+  async search(userId: string, query: SearchDriversQueryDto) {
+    await this.getDirectorIdByUserId(userId);
+
+    return this.prisma.driver.findMany({
+      where: {
+        ...(query.fullName
+          ? {
+              user: {
+                fullName: {
+                  contains: query.fullName,
+                  mode: "insensitive",
+                },
+              },
+            }
+          : {}),
+        ...(query.inTaxiPark === undefined
+          ? {}
+          : query.inTaxiPark
+            ? { taxiParkId: { not: null } }
+            : { taxiParkId: null }),
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        taxiParkId: true,
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    }).then((drivers) =>
+      drivers.map((driver) => ({
+        driverId: driver.id,
+        userId: driver.user.id,
+        fullName: driver.user.fullName,
+        email: driver.user.email,
+        isInTaxiPark: Boolean(driver.taxiParkId),
+        assignedTaxiParkId: driver.taxiParkId ?? undefined,
+      })),
+    );
   }
 
   async get(userId: string, driverId: string) {

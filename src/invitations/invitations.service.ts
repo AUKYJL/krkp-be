@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { InvitationStatus } from "@prisma/client";
+import { InvitationStatus, Prisma } from "@prisma/client";
 import { ActionLogsService } from "../action-logs/action-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LOG_EVENTS } from "../shared/consts/log-events";
@@ -45,9 +45,20 @@ export class InvitationsService {
     if (!driver) throw new NotFoundException("Driver not found");
     if (driver.taxiParkId) throw new BadRequestException("Driver already in taxi park");
 
-    const invitation = await this.prisma.driverInvitation.create({
-      data: { taxiParkId, driverId: dto.driverId },
-    });
+    let invitation;
+    try {
+      invitation = await this.prisma.driverInvitation.create({
+        data: { taxiParkId, driverId: dto.driverId },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new BadRequestException("Invitation already exists");
+      }
+      throw error;
+    }
 
     await this.actionLogs.createLog(
       userId,
@@ -66,10 +77,29 @@ export class InvitationsService {
       select: { id: true },
     });
     if (!driver) throw new NotFoundException("Driver not found");
-    return this.prisma.driverInvitation.findMany({
+    const invitations = await this.prisma.driverInvitation.findMany({
       where: { driverId: driver.id },
       orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        taxiPark: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+          },
+        },
+      },
     });
+
+    return invitations.map((invitation) => ({
+      invitationId: invitation.id,
+      status: invitation.status,
+      createdAt: invitation.createdAt,
+      taxiPark: invitation.taxiPark,
+    }));
   }
 
   private async getMyInvitationOrThrow(userId: string, invitationId: string) {
@@ -92,14 +122,27 @@ export class InvitationsService {
       throw new BadRequestException("Invitation is not pending");
     }
 
-    const updated = await this.prisma.driverInvitation.update({
-      where: { id: invitationId },
-      data: { status: InvitationStatus.ACCEPTED },
-    });
-
-    await this.prisma.driver.update({
+    const driver = await this.prisma.driver.findUnique({
       where: { id: invitation.driverId },
-      data: { taxiParkId: invitation.taxiParkId },
+      select: { id: true, taxiParkId: true },
+    });
+    if (!driver) throw new NotFoundException("Driver not found");
+    if (driver.taxiParkId) {
+      throw new BadRequestException("Driver already in taxi park");
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const acceptedInvitation = await tx.driverInvitation.update({
+        where: { id: invitationId },
+        data: { status: InvitationStatus.ACCEPTED },
+      });
+
+      await tx.driver.update({
+        where: { id: invitation.driverId },
+        data: { taxiParkId: invitation.taxiParkId },
+      });
+
+      return acceptedInvitation;
     });
 
     await this.actionLogs.createLog(

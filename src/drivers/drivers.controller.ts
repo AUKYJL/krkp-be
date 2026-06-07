@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -13,6 +14,8 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
 import { ROLE } from "../shared/types/roles";
 import { AssignCarDto } from "./dto/assign-car.dto";
+import { DriverSearchItemDto } from "./dto/driver-search-item.dto";
+import { SearchDriversQueryDto } from "./dto/search-drivers-query.dto";
 import { UpdateDriverDto } from "./dto/update-driver.dto";
 import { DriversService } from "./drivers.service";
 
@@ -27,6 +30,14 @@ export class DriversController {
   @ApiOperation({ summary: "Список водителей" })
   list(@Req() req: RequestWithCurrentUser) {
     return this.service.list(req.currentUser.id);
+  }
+
+  @Get("search")
+  @Roles(ROLE.DIRECTOR)
+  @ApiOkResponse({ type: DriverSearchItemDto, isArray: true })
+  @ApiOperation({ summary: "Глобальный поиск водителей для директора" })
+  search(@Req() req: RequestWithCurrentUser, @Query() query: SearchDriversQueryDto) {
+    return this.service.search(req.currentUser.id, query);
   }
 
   @Get("me")
@@ -73,4 +84,3 @@ export class DriversController {
     return this.service.assignCar(req.currentUser.id, driverId, dto);
   }
 }
-
