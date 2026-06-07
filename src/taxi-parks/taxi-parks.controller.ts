@@ -2,6 +2,10 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { AnalyticsService } from "../analytics/analytics.service";
+import {
+  GetCarBrandsAnalyticsQueryDto,
+  GetCarBrandsAnalyticsResponseDto,
+} from "../analytics/dto/get-car-brands-analytics.dto";
 import { ROLE } from "../shared/types/roles";
 import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
 import { GetTaxiParkAnalyticsQueryDto } from "../analytics/dto/get-taxi-park-analytics-query.dto";
@@ -67,6 +71,21 @@ export class TaxiParksController {
     @Query() query: GetTaxiParkAnalyticsQueryDto,
   ) {
     return this.analyticsService.getTaxiParkAnalytics(
+      req.currentUser.id,
+      taxiParkId,
+      query,
+    );
+  }
+
+  @Get(":taxiParkId/cars/brands/analytics")
+  @ApiOkResponse({ type: GetCarBrandsAnalyticsResponseDto })
+  @ApiOperation({ summary: "Аналитика марок автомобилей таксопарка" })
+  getCarBrandsAnalytics(
+    @Req() req: RequestWithCurrentUser,
+    @Param("taxiParkId") taxiParkId: string,
+    @Query() query: GetCarBrandsAnalyticsQueryDto,
+  ) {
+    return this.legacyAnalyticsService.getCarBrandsAnalytics(
       req.currentUser.id,
       taxiParkId,
       query,

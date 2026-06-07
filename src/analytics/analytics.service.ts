@@ -4,9 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Car, Driver, Prisma, User } from "@prisma/client";
+import { Car, Driver, Prisma, User, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { GetDirectorDashboardQueryDto } from "./dto/get-director-dashboard-query.dto";
+import { GetDirectorDashboardResponseDto } from "./dto/get-director-dashboard-response.dto";
+import { GetDriverDashboardQueryDto } from "./dto/get-driver-dashboard-query.dto";
+import { GetDriverDashboardResponseDto } from "./dto/get-driver-dashboard-response.dto";
 import { GetTaxiParkAnalyticsQueryDto } from "./dto/get-taxi-park-analytics-query.dto";
+import {
+  GetCarBrandsAnalyticsQueryDto,
+  GetCarBrandsAnalyticsResponseDto,
+} from "./dto/get-car-brands-analytics.dto";
 import {
   GetCarAnalyticsResponseDto,
   GetDriverAnalyticsResponseDto,
@@ -14,10 +22,12 @@ import {
 } from "./dto/get-taxi-park-analytics-response.dto";
 import { GetTaxiParksAnalyticsQueryDto } from "../taxi-parks/dto/get-taxi-parks-analytics-query.dto";
 import { GetDriverAnalyticsQueryDto } from "./dto/get-driver-analytics-query.dto";
+import { AnalyticsPeriodQueryDto } from "./dto/analytics-period-query.dto";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const TOP_BRANDS_LIMIT = 10;
 const TOP_RESULTS_LIMIT = 20;
+const DIRECTOR_DASHBOARD_TOP_LIMIT = 10;
 
 type WorkDayWithRelations = Prisma.WorkDayGetPayload<{
   include: {
@@ -32,6 +42,10 @@ type WorkDayWithRelations = Prisma.WorkDayGetPayload<{
 
 type DriverWithUser = Driver & {
   user: User;
+};
+
+type DriverWithUserAndAssignedCar = DriverWithUser & {
+  assignedCar: Car | null;
 };
 
 type DriverStat = {
@@ -251,6 +265,101 @@ type DriverWorkDayWithCar = Prisma.WorkDayGetPayload<{
 @Injectable()
 export class AnalyticsService {
   constructor(private prisma: PrismaService) {}
+
+  async getDirectorDashboard(
+    userId: string,
+    query: GetDirectorDashboardQueryDto,
+  ): Promise<GetDirectorDashboardResponseDto> {
+    await this.assertUserRole(userId, UserRole.DIRECTOR);
+
+    const period = this.resolvePeriod(query);
+    const { taxiParks, taxiParkIds } = await this.getAllowedTaxiParkIds(userId);
+    const [cars, drivers, workDays] = await Promise.all([
+      this.prisma.car.findMany({
+        where: { taxiParkId: { in: taxiParkIds } },
+        orderBy: [{ firm: "asc" }, { model: "asc" }, { plateNumber: "asc" }],
+      }),
+      this.prisma.driver.findMany({
+        where: { taxiParkId: { in: taxiParkIds } },
+        include: { user: true, assignedCar: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      this.getWorkDaysForTaxiParks(period, taxiParkIds),
+    ]);
+
+    return this.buildDirectorDashboard(period, taxiParks, cars, drivers, workDays);
+  }
+
+  async getDriverDashboard(
+    userId: string,
+    query: GetDriverDashboardQueryDto,
+  ): Promise<GetDriverDashboardResponseDto> {
+    await this.assertUserRole(userId, UserRole.DRIVER);
+
+    const period = this.resolvePeriod(query);
+    const driver = await this.prisma.driver.findUnique({
+      where: { userId },
+      include: {
+        user: true,
+        taxiPark: true,
+        assignedCar: true,
+      },
+    });
+
+    if (!driver) {
+      throw new NotFoundException("Driver not found");
+    }
+
+    if (!driver.taxiParkId || !driver.taxiPark) {
+      throw new ForbiddenException("Driver is not assigned to a taxi park");
+    }
+
+    const [workDays, drivers, taxiParkWorkDays] = await Promise.all([
+      this.prisma.workDay.findMany({
+        where: {
+          driverId: driver.id,
+          workDate: {
+            gte: period.fromDate,
+            lte: period.toDate,
+          },
+          driver: {
+            taxiParkId: driver.taxiParkId,
+          },
+          car: {
+            taxiParkId: driver.taxiParkId,
+          },
+        },
+        include: {
+          car: true,
+        },
+        orderBy: {
+          workDate: "asc",
+        },
+      }),
+      this.prisma.driver.findMany({
+        where: {
+          taxiParkId: driver.taxiParkId,
+        },
+        include: {
+          user: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      }),
+      this.getWorkDaysForTaxiParks(period, [driver.taxiParkId]),
+    ]);
+
+    return this.buildDriverAnalytics(
+      period,
+      driver.taxiParkId,
+      driver.taxiPark.name,
+      driver,
+      workDays,
+      drivers,
+      taxiParkWorkDays,
+    );
+  }
 
   async getTaxiParkAnalytics(
     userId: string,
@@ -590,6 +699,227 @@ export class AnalyticsService {
           fullName: workDay.driver.user.fullName,
         },
       })),
+    };
+  }
+
+  async getCarBrandsAnalytics(
+    userId: string,
+    taxiParkId: string,
+    query: GetCarBrandsAnalyticsQueryDto,
+  ): Promise<GetCarBrandsAnalyticsResponseDto> {
+    const period = this.resolvePeriod(query);
+
+    const taxiPark = await this.prisma.taxiPark.findUnique({
+      where: { id: taxiParkId },
+      include: {
+        director: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!taxiPark) {
+      throw new NotFoundException("Taxi park not found");
+    }
+
+    if (taxiPark.director.userId !== userId) {
+      throw new ForbiddenException("Access to taxi park analytics is denied");
+    }
+
+    const [cars, workDays] = await Promise.all([
+      this.prisma.car.findMany({
+        where: { taxiParkId },
+        orderBy: [{ firm: "asc" }, { model: "asc" }, { plateNumber: "asc" }],
+      }),
+      this.prisma.workDay.findMany({
+        where: {
+          workDate: {
+            gte: period.fromDate,
+            lte: period.toDate,
+          },
+          driver: {
+            taxiParkId,
+          },
+          car: {
+            taxiParkId,
+          },
+        },
+        include: {
+          car: true,
+          driver: true,
+        },
+        orderBy: {
+          workDate: "asc",
+        },
+      }),
+    ]);
+
+    const brandStats = new Map<string, BrandStat>();
+
+    for (const car of cars) {
+      brandStats.set(car.firm, {
+        firm: car.firm,
+        carsCount: (brandStats.get(car.firm)?.carsCount ?? 0) + 1,
+        totalRevenue: brandStats.get(car.firm)?.totalRevenue ?? 0,
+        onlineDaysCount: brandStats.get(car.firm)?.onlineDaysCount ?? 0,
+        downtimeDaysCount: brandStats.get(car.firm)?.downtimeDaysCount ?? 0,
+      });
+    }
+
+    for (const workDay of workDays) {
+      const brandStat = brandStats.get(workDay.car.firm);
+
+      if (!brandStat) {
+        continue;
+      }
+
+      brandStat.totalRevenue += Number(workDay.revenue);
+
+      if (workDay.carOnLine) {
+        brandStat.onlineDaysCount += 1;
+      } else {
+        brandStat.downtimeDaysCount += 1;
+      }
+    }
+
+    const brands = Array.from(brandStats.values()).map((brandStat) => ({
+      firm: brandStat.firm,
+      carsCount: brandStat.carsCount,
+      totalRevenue: this.roundMoney(brandStat.totalRevenue),
+      averageRevenuePerCar: this.roundMoney(
+        this.safeDivide(brandStat.totalRevenue, brandStat.carsCount),
+      ),
+      averageRevenuePerOnlineDay: this.roundMoney(
+        this.safeDivide(brandStat.totalRevenue, brandStat.onlineDaysCount),
+      ),
+      onlineDaysCount: brandStat.onlineDaysCount,
+      downtimeDaysCount: brandStat.downtimeDaysCount,
+      utilizationRate: this.roundPercent(
+        this.safeDivide(
+          brandStat.onlineDaysCount * 100,
+          brandStat.carsCount * period.daysCount,
+        ),
+      ),
+      downtimeRate: this.roundPercent(
+        this.safeDivide(
+          brandStat.downtimeDaysCount * 100,
+          brandStat.carsCount * period.daysCount,
+        ),
+      ),
+      revenueRank: 0,
+      downtimeRank: 0,
+    }));
+
+    const revenueRankedBrands = [...brands].sort((left, right) => {
+      if (right.totalRevenue !== left.totalRevenue) {
+        return right.totalRevenue - left.totalRevenue;
+      }
+
+      return left.firm.localeCompare(right.firm);
+    });
+
+    const revenueRankByFirm = new Map(
+      revenueRankedBrands.map((brand, index) => [brand.firm, index + 1]),
+    );
+
+    const downtimeRankedBrands = [...brands].sort((left, right) => {
+      if (right.downtimeDaysCount !== left.downtimeDaysCount) {
+        return right.downtimeDaysCount - left.downtimeDaysCount;
+      }
+
+      if (right.downtimeRate !== left.downtimeRate) {
+        return right.downtimeRate - left.downtimeRate;
+      }
+
+      return left.firm.localeCompare(right.firm);
+    });
+
+    const downtimeRankByFirm = new Map(
+      downtimeRankedBrands.map((brand, index) => [brand.firm, index + 1]),
+    );
+
+    const rankedBrands = revenueRankedBrands.map((brand) => ({
+      ...brand,
+      revenueRank: revenueRankByFirm.get(brand.firm) ?? 0,
+      downtimeRank: downtimeRankByFirm.get(brand.firm) ?? 0,
+    }));
+
+    const mostProfitableBrands = rankedBrands.slice(0, TOP_BRANDS_LIMIT).map((brand) => ({
+      firm: brand.firm,
+      carsCount: brand.carsCount,
+      totalRevenue: brand.totalRevenue,
+      averageRevenuePerCar: brand.averageRevenuePerCar,
+      averageRevenuePerOnlineDay: brand.averageRevenuePerOnlineDay,
+      onlineDaysCount: brand.onlineDaysCount,
+      downtimeDaysCount: brand.downtimeDaysCount,
+      utilizationRate: brand.utilizationRate,
+      revenueRank: brand.revenueRank,
+    }));
+
+    const rankedBrandsByDowntime = [...rankedBrands].sort((left, right) => {
+      if (right.downtimeDaysCount !== left.downtimeDaysCount) {
+        return right.downtimeDaysCount - left.downtimeDaysCount;
+      }
+
+      if (right.downtimeRate !== left.downtimeRate) {
+        return right.downtimeRate - left.downtimeRate;
+      }
+
+      return left.firm.localeCompare(right.firm);
+    });
+
+    const mostDowntimeBrands = rankedBrandsByDowntime
+      .slice(0, TOP_BRANDS_LIMIT)
+      .map((brand) => ({
+        firm: brand.firm,
+        carsCount: brand.carsCount,
+        totalRevenue: brand.totalRevenue,
+        onlineDaysCount: brand.onlineDaysCount,
+        downtimeDaysCount: brand.downtimeDaysCount,
+        downtimeRate: brand.downtimeRate,
+        utilizationRate: brand.utilizationRate,
+        downtimeRank: brand.downtimeRank,
+      }));
+
+    const totalRevenue = rankedBrands.reduce((sum, brand) => sum + brand.totalRevenue, 0);
+    const totalDowntimeDaysCount = rankedBrands.reduce(
+      (sum, brand) => sum + brand.downtimeDaysCount,
+      0,
+    );
+
+    return {
+      period: {
+        from: period.from,
+        to: period.to,
+        daysCount: period.daysCount,
+      },
+      taxiPark: {
+        taxiParkId: taxiPark.id,
+        name: taxiPark.name,
+      },
+      summary: {
+        brandsCount: rankedBrands.length,
+        carsCount: cars.length,
+        totalRevenue: this.roundMoney(totalRevenue),
+        totalDowntimeDaysCount,
+        bestRevenueBrand: mostProfitableBrands[0]
+          ? {
+              firm: mostProfitableBrands[0].firm,
+              totalRevenue: mostProfitableBrands[0].totalRevenue,
+            }
+          : null,
+        mostDowntimeBrand: mostDowntimeBrands[0]
+          ? {
+              firm: mostDowntimeBrands[0].firm,
+              downtimeDaysCount: mostDowntimeBrands[0].downtimeDaysCount,
+            }
+          : null,
+      },
+      brands: rankedBrands,
+      mostProfitableBrands,
+      mostDowntimeBrands,
     };
   }
 
@@ -1692,7 +2022,7 @@ export class AnalyticsService {
     period: Period,
     taxiParkId: string,
     taxiParkName: string,
-    driver: DriverWithUser & { assignedCar: Car | null },
+    driver: DriverWithUserAndAssignedCar,
     workDays: DriverWorkDayWithCar[],
     drivers: DriverWithUser[],
     taxiParkWorkDays: WorkDayWithRelations[],
@@ -1905,6 +2235,519 @@ export class AnalyticsService {
     };
   }
 
+  private buildDirectorDashboard(
+    period: Period,
+    taxiParks: TaxiParkAccess["taxiParks"],
+    cars: Car[],
+    drivers: DriverWithUserAndAssignedCar[],
+    workDays: WorkDayWithRelations[],
+  ): GetDirectorDashboardResponseDto {
+    const taxiParksById = new Map(taxiParks.map((item) => [item.id, item] as const));
+    const taxiParkAggregates = new Map(
+      taxiParks.map((taxiPark) => [
+        taxiPark.id,
+        {
+          taxiParkId: taxiPark.id,
+          name: taxiPark.name,
+          address: taxiPark.address,
+          driversCount: 0,
+          activeDriversCount: 0,
+          carsCount: 0,
+          totalRevenue: 0,
+          workDaysCount: 0,
+          onlineDaysCount: 0,
+          downtimeDaysCount: 0,
+        },
+      ]),
+    );
+    const revenueByDayMap = new Map(
+      this.buildEmptyRevenueByDay(period).map((entry) => [entry.date, entry] as const),
+    );
+    const driverStats = new Map<
+      string,
+      DriverStat & {
+        taxiParkId: string;
+        taxiParkName: string;
+        daysWithRevenueAboveAverage: number;
+      }
+    >();
+    const carStats = new Map<
+      string,
+      CarStat & {
+        taxiParkId: string;
+        taxiParkName: string;
+      }
+    >();
+    const brandStats = new Map<string, BrandStat>();
+    const activeDriverIds = new Set<string>();
+    const activeDriverIdsByParkId = new Map<string, Set<string>>();
+
+    for (const taxiPark of taxiParks) {
+      activeDriverIdsByParkId.set(taxiPark.id, new Set<string>());
+    }
+
+    for (const driver of drivers) {
+      if (!driver.taxiParkId) {
+        continue;
+      }
+
+      const driverTaxiParkAggregate = taxiParkAggregates.get(driver.taxiParkId);
+      if (driverTaxiParkAggregate) {
+        driverTaxiParkAggregate.driversCount += 1;
+      }
+
+      driverStats.set(driver.id, {
+        driverId: driver.id,
+        fullName: driver.user.fullName,
+        taxiParkId: driver.taxiParkId,
+        taxiParkName: taxiParksById.get(driver.taxiParkId)?.name ?? "",
+        totalRevenue: 0,
+        onlineDaysCount: 0,
+        downtimeDaysCount: 0,
+        daysWithRevenueAboveAverage: 0,
+      });
+    }
+
+    for (const car of cars) {
+      const carTaxiParkAggregate = taxiParkAggregates.get(car.taxiParkId);
+      if (carTaxiParkAggregate) {
+        carTaxiParkAggregate.carsCount += 1;
+      }
+
+      carStats.set(car.id, {
+        carId: car.id,
+        firm: car.firm,
+        model: car.model,
+        plateNumber: car.plateNumber,
+        state: car.state,
+        taxiParkId: car.taxiParkId,
+        taxiParkName: taxiParksById.get(car.taxiParkId)?.name ?? "",
+        totalRevenue: 0,
+        onlineDaysCount: 0,
+        downtimeDaysCount: 0,
+      });
+      brandStats.set(car.firm, {
+        firm: car.firm,
+        carsCount: (brandStats.get(car.firm)?.carsCount ?? 0) + 1,
+        totalRevenue: brandStats.get(car.firm)?.totalRevenue ?? 0,
+        onlineDaysCount: brandStats.get(car.firm)?.onlineDaysCount ?? 0,
+        downtimeDaysCount: brandStats.get(car.firm)?.downtimeDaysCount ?? 0,
+      });
+    }
+
+    let totalRevenue = 0;
+    let onlineDaysCount = 0;
+    let downtimeDaysCount = 0;
+
+    for (const workDay of workDays) {
+      const driverTaxiParkId = workDay.driver.taxiParkId;
+      const carTaxiParkId = workDay.car.taxiParkId;
+
+      if (!driverTaxiParkId || driverTaxiParkId !== carTaxiParkId) {
+        continue;
+      }
+
+      const aggregate = taxiParkAggregates.get(driverTaxiParkId);
+      const date = this.formatDate(workDay.workDate);
+      const revenue = Number(workDay.revenue);
+      const dayEntry = revenueByDayMap.get(date);
+
+      totalRevenue += revenue;
+      activeDriverIds.add(workDay.driverId);
+      activeDriverIdsByParkId.get(driverTaxiParkId)?.add(workDay.driverId);
+
+      if (aggregate) {
+        aggregate.totalRevenue += revenue;
+        aggregate.workDaysCount += 1;
+      }
+
+      if (dayEntry) {
+        dayEntry.revenue += revenue;
+        if (workDay.carOnLine) {
+          dayEntry.onlineCarsCount += 1;
+        } else {
+          dayEntry.downtimeCarsCount += 1;
+        }
+      }
+
+      const driverStat = driverStats.get(workDay.driverId);
+      if (driverStat) {
+        driverStat.totalRevenue += revenue;
+        if (workDay.carOnLine) {
+          driverStat.onlineDaysCount += 1;
+        } else {
+          driverStat.downtimeDaysCount += 1;
+        }
+      }
+
+      const carStat = carStats.get(workDay.carId);
+      if (carStat) {
+        carStat.totalRevenue += revenue;
+        if (workDay.carOnLine) {
+          carStat.onlineDaysCount += 1;
+        } else {
+          carStat.downtimeDaysCount += 1;
+        }
+      }
+
+      const brandStat = brandStats.get(workDay.car.firm);
+      if (brandStat) {
+        brandStat.totalRevenue += revenue;
+        if (workDay.carOnLine) {
+          brandStat.onlineDaysCount += 1;
+        } else {
+          brandStat.downtimeDaysCount += 1;
+        }
+      }
+
+      if (workDay.carOnLine) {
+        onlineDaysCount += 1;
+        aggregate && (aggregate.onlineDaysCount += 1);
+      } else {
+        downtimeDaysCount += 1;
+        aggregate && (aggregate.downtimeDaysCount += 1);
+      }
+    }
+
+    for (const workDay of workDays) {
+      if (!workDay.carOnLine) {
+        continue;
+      }
+
+      const driverStat = driverStats.get(workDay.driverId);
+      if (!driverStat) {
+        continue;
+      }
+
+      const driverAverageRevenuePerShift = this.safeDivide(
+        driverStat.totalRevenue,
+        driverStat.onlineDaysCount,
+      );
+
+      if (Number(workDay.revenue) > driverAverageRevenuePerShift) {
+        driverStat.daysWithRevenueAboveAverage += 1;
+      }
+    }
+
+    for (const [taxiParkId, aggregate] of taxiParkAggregates) {
+      aggregate.activeDriversCount = activeDriverIdsByParkId.get(taxiParkId)?.size ?? 0;
+    }
+
+    const workDaysCount = workDays.length;
+    const averageRevenuePerOnlineDay = this.safeDivide(totalRevenue, onlineDaysCount);
+    const averageRevenuePerActiveDriver = this.safeDivide(
+      totalRevenue,
+      activeDriverIds.size,
+    );
+
+    const taxiParksComparison = Array.from(taxiParkAggregates.values())
+      .sort((left, right) => {
+        if (right.totalRevenue !== left.totalRevenue) {
+          return right.totalRevenue - left.totalRevenue;
+        }
+
+        return left.name.localeCompare(right.name);
+      })
+      .map((aggregate) => ({
+        taxiParkId: aggregate.taxiParkId,
+        name: aggregate.name,
+        address: aggregate.address,
+        driversCount: aggregate.driversCount,
+        activeDriversCount: aggregate.activeDriversCount,
+        carsCount: aggregate.carsCount,
+        totalRevenue: this.roundMoney(aggregate.totalRevenue),
+        averageRevenuePerDay: this.roundMoney(
+          this.safeDivide(aggregate.totalRevenue, period.daysCount),
+        ),
+        averageRevenuePerActiveDriver: this.roundMoney(
+          this.safeDivide(aggregate.totalRevenue, aggregate.activeDriversCount),
+        ),
+        averageRevenuePerCar: this.roundMoney(
+          this.safeDivide(aggregate.totalRevenue, aggregate.carsCount),
+        ),
+        workDaysCount: aggregate.workDaysCount,
+        onlineDaysCount: aggregate.onlineDaysCount,
+        downtimeDaysCount: aggregate.downtimeDaysCount,
+        onlineRate: this.roundPercent(
+          this.safeDivide(aggregate.onlineDaysCount * 100, aggregate.workDaysCount),
+        ),
+        downtimeRate: this.roundPercent(
+          this.safeDivide(aggregate.downtimeDaysCount * 100, aggregate.workDaysCount),
+        ),
+        estimatedDowntimeLoss: this.roundMoney(
+          this.safeDivide(aggregate.totalRevenue, aggregate.onlineDaysCount) *
+            aggregate.downtimeDaysCount,
+        ),
+      }));
+
+    const revenueByDay = Array.from(revenueByDayMap.values()).map((entry) => ({
+      ...entry,
+      revenue: this.roundMoney(entry.revenue),
+    }));
+
+    const revenueByTaxiPark = taxiParksComparison.map((taxiPark) => ({
+      taxiParkId: taxiPark.taxiParkId,
+      taxiParkName: taxiPark.name,
+      revenue: taxiPark.totalRevenue,
+    }));
+
+    const rankedDrivers = Array.from(driverStats.values()).sort((left, right) => {
+      if (right.totalRevenue !== left.totalRevenue) {
+        return right.totalRevenue - left.totalRevenue;
+      }
+
+      return left.fullName.localeCompare(right.fullName);
+    });
+    const maxDriverRevenue = rankedDrivers.reduce(
+      (maxRevenue, item) => Math.max(maxRevenue, item.totalRevenue),
+      0,
+    );
+
+    const driversRating = rankedDrivers.map((driverStat, index) => ({
+      driverId: driverStat.driverId,
+      fullName: driverStat.fullName,
+      taxiParkId: driverStat.taxiParkId,
+      taxiParkName: driverStat.taxiParkName,
+      totalRevenue: this.roundMoney(driverStat.totalRevenue),
+      averageRevenuePerOnlineDay: this.roundMoney(
+        this.safeDivide(driverStat.totalRevenue, driverStat.onlineDaysCount),
+      ),
+      onlineDaysCount: driverStat.onlineDaysCount,
+      downtimeDaysCount: driverStat.downtimeDaysCount,
+      activityRate: this.roundPercent(
+        this.safeDivide(driverStat.onlineDaysCount * 100, period.daysCount),
+      ),
+      rank: index + 1,
+    }));
+
+    const topDrivers = driversRating.slice(0, DIRECTOR_DASHBOARD_TOP_LIMIT);
+    const belowAverageDrivers = driversRating
+      .filter((driverStat) => driverStat.totalRevenue < averageRevenuePerActiveDriver)
+      .sort((left, right) => {
+        if (left.totalRevenue !== right.totalRevenue) {
+          return left.totalRevenue - right.totalRevenue;
+        }
+
+        return left.fullName.localeCompare(right.fullName);
+      })
+      .slice(0, DIRECTOR_DASHBOARD_TOP_LIMIT);
+
+    const driverEfficiency = rankedDrivers
+      .map((driverStat) => {
+        const revenueScore = this.safeDivide(
+          driverStat.totalRevenue * 100,
+          maxDriverRevenue,
+        );
+        const activityScore = this.safeDivide(
+          driverStat.onlineDaysCount * 100,
+          period.daysCount,
+        );
+        const stabilityScore = this.safeDivide(
+          driverStat.daysWithRevenueAboveAverage * 100,
+          driverStat.onlineDaysCount,
+        );
+        const efficiency = revenueScore * 0.6 + activityScore * 0.3 + stabilityScore * 0.1;
+
+        return {
+          driverId: driverStat.driverId,
+          fullName: driverStat.fullName,
+          taxiParkId: driverStat.taxiParkId,
+          taxiParkName: driverStat.taxiParkName,
+          driverEfficiency: this.roundPercent(efficiency),
+          revenueScore: this.roundPercent(revenueScore),
+          activityScore: this.roundPercent(activityScore),
+          stabilityScore: this.roundPercent(stabilityScore),
+          totalRevenue: this.roundMoney(driverStat.totalRevenue),
+          maxDriverRevenue: this.roundMoney(maxDriverRevenue),
+          daysWithRevenueAboveAverage: driverStat.daysWithRevenueAboveAverage,
+        };
+      })
+      .sort((left, right) => {
+        if (right.driverEfficiency !== left.driverEfficiency) {
+          return right.driverEfficiency - left.driverEfficiency;
+        }
+
+        return left.fullName.localeCompare(right.fullName);
+      })
+      .slice(0, DIRECTOR_DASHBOARD_TOP_LIMIT);
+
+    const rankedCars = Array.from(carStats.values()).sort((left, right) => {
+      if (right.totalRevenue !== left.totalRevenue) {
+        return right.totalRevenue - left.totalRevenue;
+      }
+
+      return left.plateNumber.localeCompare(right.plateNumber);
+    });
+
+    const topCars = rankedCars
+      .slice(0, DIRECTOR_DASHBOARD_TOP_LIMIT)
+      .map((carStat) => ({
+        carId: carStat.carId,
+        firm: carStat.firm,
+        model: carStat.model,
+        plateNumber: carStat.plateNumber,
+        state: carStat.state,
+        taxiParkId: carStat.taxiParkId,
+        taxiParkName: carStat.taxiParkName,
+        totalRevenue: this.roundMoney(carStat.totalRevenue),
+        averageRevenuePerOnlineDay: this.roundMoney(
+          this.safeDivide(carStat.totalRevenue, carStat.onlineDaysCount),
+        ),
+        onlineDaysCount: carStat.onlineDaysCount,
+        downtimeDaysCount: carStat.downtimeDaysCount,
+        utilizationRate: this.roundPercent(
+          this.safeDivide(carStat.onlineDaysCount * 100, period.daysCount),
+        ),
+      }));
+
+    const utilization = Array.from(carStats.values())
+      .sort((left, right) => {
+        const rightUtilization = this.safeDivide(right.onlineDaysCount * 100, period.daysCount);
+        const leftUtilization = this.safeDivide(left.onlineDaysCount * 100, period.daysCount);
+
+        if (rightUtilization !== leftUtilization) {
+          return rightUtilization - leftUtilization;
+        }
+
+        return left.plateNumber.localeCompare(right.plateNumber);
+      })
+      .slice(0, DIRECTOR_DASHBOARD_TOP_LIMIT)
+      .map((carStat) => ({
+        carId: carStat.carId,
+        firm: carStat.firm,
+        model: carStat.model,
+        plateNumber: carStat.plateNumber,
+        state: carStat.state,
+        taxiParkId: carStat.taxiParkId,
+        taxiParkName: carStat.taxiParkName,
+        totalRevenue: this.roundMoney(carStat.totalRevenue),
+        averageRevenuePerOnlineDay: this.roundMoney(
+          this.safeDivide(carStat.totalRevenue, carStat.onlineDaysCount),
+        ),
+        onlineDaysCount: carStat.onlineDaysCount,
+        downtimeDaysCount: carStat.downtimeDaysCount,
+        utilizationRate: this.roundPercent(
+          this.safeDivide(carStat.onlineDaysCount * 100, period.daysCount),
+        ),
+      }));
+
+    const problemCars = Array.from(carStats.values())
+      .filter((carStat) => carStat.downtimeDaysCount > 0)
+      .sort((left, right) => {
+        if (right.downtimeDaysCount !== left.downtimeDaysCount) {
+          return right.downtimeDaysCount - left.downtimeDaysCount;
+        }
+
+        const rightLoss =
+          this.safeDivide(right.totalRevenue, right.onlineDaysCount) * right.downtimeDaysCount;
+        const leftLoss =
+          this.safeDivide(left.totalRevenue, left.onlineDaysCount) * left.downtimeDaysCount;
+
+        return rightLoss - leftLoss;
+      })
+      .slice(0, DIRECTOR_DASHBOARD_TOP_LIMIT)
+      .map((carStat) => ({
+        carId: carStat.carId,
+        firm: carStat.firm,
+        model: carStat.model,
+        plateNumber: carStat.plateNumber,
+        taxiParkId: carStat.taxiParkId,
+        taxiParkName: carStat.taxiParkName,
+        downtimeDaysCount: carStat.downtimeDaysCount,
+        estimatedLoss: this.roundMoney(
+          this.safeDivide(carStat.totalRevenue, carStat.onlineDaysCount) *
+            carStat.downtimeDaysCount,
+        ),
+      }));
+
+    const topBrands = Array.from(brandStats.values())
+      .sort((left, right) => {
+        if (right.totalRevenue !== left.totalRevenue) {
+          return right.totalRevenue - left.totalRevenue;
+        }
+
+        return left.firm.localeCompare(right.firm);
+      })
+      .slice(0, DIRECTOR_DASHBOARD_TOP_LIMIT)
+      .map((brandStat) => ({
+        firm: brandStat.firm,
+        carsCount: brandStat.carsCount,
+        totalRevenue: this.roundMoney(brandStat.totalRevenue),
+        averageRevenuePerCar: this.roundMoney(
+          this.safeDivide(brandStat.totalRevenue, brandStat.carsCount),
+        ),
+        onlineDaysCount: brandStat.onlineDaysCount,
+        downtimeDaysCount: brandStat.downtimeDaysCount,
+        utilizationRate: this.roundPercent(
+          this.safeDivide(
+            brandStat.onlineDaysCount * 100,
+            brandStat.carsCount * period.daysCount,
+          ),
+        ),
+      }));
+
+    return {
+      period: {
+        from: period.from,
+        to: period.to,
+        daysCount: period.daysCount,
+      },
+      summary: {
+        taxiParksCount: taxiParks.length,
+        driversCount: drivers.length,
+        activeDriversCount: activeDriverIds.size,
+        carsCount: cars.length,
+        workDaysCount,
+        onlineDaysCount,
+        downtimeDaysCount,
+      },
+      financialKpis: {
+        totalRevenue: this.roundMoney(totalRevenue),
+        averageRevenuePerDay: this.roundMoney(
+          this.safeDivide(totalRevenue, period.daysCount),
+        ),
+        averageRevenuePerActiveDriver: this.roundMoney(averageRevenuePerActiveDriver),
+        averageRevenuePerCar: this.roundMoney(this.safeDivide(totalRevenue, cars.length)),
+        averageRevenuePerTaxiPark: this.roundMoney(
+          this.safeDivide(totalRevenue, taxiParks.length),
+        ),
+      },
+      downtimeKpis: {
+        downtimeDaysCount,
+        downtimeRate: this.roundPercent(
+          this.safeDivide(downtimeDaysCount * 100, workDaysCount),
+        ),
+        onlineDaysCount,
+        onlineRate: this.roundPercent(this.safeDivide(onlineDaysCount * 100, workDaysCount)),
+        estimatedDowntimeLoss: this.roundMoney(
+          averageRevenuePerOnlineDay * downtimeDaysCount,
+        ),
+        mostDowntimeCars: problemCars,
+      },
+      driverKpis: {
+        topDrivers,
+        belowAverageDrivers,
+        driversRating: driversRating.slice(0, TOP_RESULTS_LIMIT),
+        driverEfficiency,
+      },
+      carKpis: {
+        topCars,
+        problemCars,
+        utilization,
+        topBrands,
+      },
+      charts: {
+        revenueByDay,
+        downtimeByDay: revenueByDay.map((entry) => ({
+          date: entry.date,
+          downtimeCarsCount: entry.downtimeCarsCount,
+        })),
+        revenueByTaxiPark,
+      },
+      taxiParks: taxiParksComparison,
+    };
+  }
+
   private async getAllowedTaxiParkIds(
     userId: string,
     taxiParkId?: string,
@@ -2014,9 +2857,18 @@ export class AnalyticsService {
     }));
   }
 
-  private resolvePeriod(
-    query: GetTaxiParksAnalyticsQueryDto | GetTaxiParkAnalyticsQueryDto,
-  ): Period {
+  private async assertUserRole(userId: string, role: UserRole): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    if (!user || user.role !== role) {
+      throw new ForbiddenException(`Only ${role.toLowerCase()} allowed`);
+    }
+  }
+
+  private resolvePeriod(query: AnalyticsPeriodQueryDto): Period {
     const today = new Date();
     const defaultFrom = this.formatDate(
       new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)),

@@ -1,20 +1,46 @@
 import { Controller, Get, Param, Query, Req } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { ROLE } from "../shared/types/roles";
 import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
 import { GetTaxiParkAnalyticsQueryDto } from "./dto/get-taxi-park-analytics-query.dto";
 import { AnalyticsService } from "./analytics.service";
 import { GetTaxiParksAnalyticsQueryDto } from "../taxi-parks/dto/get-taxi-parks-analytics-query.dto";
+import { GetDirectorDashboardQueryDto } from "./dto/get-director-dashboard-query.dto";
+import { GetDirectorDashboardResponseDto } from "./dto/get-director-dashboard-response.dto";
+import { GetDriverDashboardQueryDto } from "./dto/get-driver-dashboard-query.dto";
+import { GetDriverDashboardResponseDto } from "./dto/get-driver-dashboard-response.dto";
 
 @ApiTags("analytics")
 @ApiBearerAuth("access-token")
-@Roles(ROLE.DIRECTOR)
 @Controller()
 export class AnalyticsController {
   constructor(private service: AnalyticsService) {}
 
+  @Get("analytics/director/dashboard")
+  @Roles(ROLE.DIRECTOR)
+  @ApiOperation({ summary: "Аналитический дашборд директора" })
+  @ApiOkResponse({ type: GetDirectorDashboardResponseDto })
+  getDirectorDashboard(
+    @Req() req: RequestWithCurrentUser,
+    @Query() query: GetDirectorDashboardQueryDto,
+  ) {
+    return this.service.getDirectorDashboard(req.currentUser.id, query);
+  }
+
+  @Get("analytics/driver/dashboard")
+  @Roles(ROLE.DRIVER)
+  @ApiOperation({ summary: "Аналитический дашборд водителя" })
+  @ApiOkResponse({ type: GetDriverDashboardResponseDto })
+  getDriverDashboard(
+    @Req() req: RequestWithCurrentUser,
+    @Query() query: GetDriverDashboardQueryDto,
+  ) {
+    return this.service.getDriverDashboard(req.currentUser.id, query);
+  }
+
   @Get("analytics/taxi-parks/:taxiParkId/drivers/:driverId/revenue")
+  @Roles(ROLE.DIRECTOR)
   @ApiOperation({ summary: "Выручка водителя " })
   driverRevenue(
     @Req() req: RequestWithCurrentUser,
@@ -26,6 +52,7 @@ export class AnalyticsController {
   }
 
   @Get("analytics/taxi-parks/:taxiParkId/revenue")
+  @Roles(ROLE.DIRECTOR)
   @ApiOperation({ summary: "Выручка таксопарка " })
   taxiParkRevenue(
     @Req() req: RequestWithCurrentUser,
@@ -36,6 +63,7 @@ export class AnalyticsController {
   }
 
   @Get("analytics/revenue/all")
+  @Roles(ROLE.DIRECTOR)
   @ApiOperation({ summary: "Выручка всех " })
   allRevenue(
     @Req() req: RequestWithCurrentUser,
@@ -45,6 +73,7 @@ export class AnalyticsController {
   }
 
   @Get("analytics/cars/most-profitable-brands")
+  @Roles(ROLE.DIRECTOR)
   @ApiOperation({ summary: "Самые прибыльные бренды " })
   mostProfitableBrands(
     @Req() req: RequestWithCurrentUser,
@@ -55,6 +84,7 @@ export class AnalyticsController {
   }
 
   @Get("analytics/cars/not-on-line")
+  @Roles(ROLE.DIRECTOR)
   @ApiOperation({ summary: "Авто не на линии " })
   carsNotOnLine(
     @Req() req: RequestWithCurrentUser,
@@ -65,6 +95,7 @@ export class AnalyticsController {
   }
 
   @Get("analytics/cars/most-broken-brands")
+  @Roles(ROLE.DIRECTOR)
   @ApiOperation({ summary: "Самые ломающиеся бренды " })
   mostBrokenBrands(
     @Req() req: RequestWithCurrentUser,
@@ -75,6 +106,7 @@ export class AnalyticsController {
   }
 
   @Get("analytics/drivers/rating")
+  @Roles(ROLE.DIRECTOR)
   @ApiOperation({ summary: "Рейтинг водителей " })
   driversRating(
     @Req() req: RequestWithCurrentUser,
@@ -85,6 +117,7 @@ export class AnalyticsController {
   }
 
   @Get("analytics/downtime-losses")
+  @Roles(ROLE.DIRECTOR)
   @ApiOperation({ summary: "Потери от простоя " })
   downtimeLosses(
     @Req() req: RequestWithCurrentUser,
