@@ -1,5 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from "@nestjs/common";
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { AnalyticsService } from "../analytics/analytics.service";
 import {
@@ -18,6 +33,7 @@ import { GetDriverAnalyticsQueryDto } from "../analytics/dto/get-driver-analytic
 import { CreateTaxiParkDto } from "./dto/create-taxi-park.dto";
 import { GetTaxiParksAnalyticsQueryDto } from "./dto/get-taxi-parks-analytics-query.dto";
 import { GetTaxiParksAnalyticsResponseDto } from "./dto/get-taxi-parks-analytics-response.dto";
+import { TaxiParkDriverItemDto } from "./dto/taxi-park-driver-item.dto";
 import { UpdateTaxiParkDto } from "./dto/update-taxi-park.dto";
 import { TaxiParksAnalyticsService } from "./taxi-parks-analytics.service";
 import { TaxiParksService } from "./taxi-parks.service";
@@ -59,7 +75,10 @@ export class TaxiParksController {
     @Req() req: RequestWithCurrentUser,
     @Query() query: GetTaxiParksAnalyticsQueryDto,
   ) {
-    return this.analyticsService.getAllTaxiParksAnalytics(req.currentUser.id, query);
+    return this.analyticsService.getAllTaxiParksAnalytics(
+      req.currentUser.id,
+      query,
+    );
   }
 
   @Get(":taxiParkId/analytics")
@@ -75,6 +94,16 @@ export class TaxiParksController {
       taxiParkId,
       query,
     );
+  }
+
+  @Get(":taxiParkId/drivers")
+  @ApiOkResponse({ type: TaxiParkDriverItemDto, isArray: true })
+  @ApiOperation({ summary: "Список водителей таксопарка" })
+  getTaxiParkDrivers(
+    @Req() req: RequestWithCurrentUser,
+    @Param("taxiParkId") taxiParkId: string,
+  ) {
+    return this.service.listDrivers(req.currentUser.id, taxiParkId);
   }
 
   @Get(":taxiParkId/cars/brands/analytics")

@@ -9,6 +9,7 @@ import { WorkDayStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { LOG_EVENTS } from "../shared/consts/log-events";
 import { AssignCarDto } from "./dto/assign-car.dto";
+import { DriverListItemDto } from "./dto/driver-list-item.dto";
 import { SearchDriversQueryDto } from "./dto/search-drivers-query.dto";
 import { UpdateDriverDto } from "./dto/update-driver.dto";
 
@@ -44,11 +45,35 @@ export class DriversService {
 
   async list(userId: string) {
     const directorId = await this.getDirectorIdByUserId(userId);
-    return this.prisma.driver.findMany({
+    const drivers = await this.prisma.driver.findMany({
       where: { taxiPark: { directorId } },
       orderBy: { createdAt: "desc" },
-      include: { user: { select: { id: true, fullName: true, email: true } } },
+      select: {
+        id: true,
+        userId: true,
+        user: { select: { fullName: true, email: true } },
+        taxiParkId: true,
+        assignedCar: {
+          select: {
+            id: true,
+            firm: true,
+            model: true,
+            type: true,
+            plateNumber: true,
+            state: true,
+            taxiParkId: true,
+          },
+        },
+      },
     });
+    return drivers.map((driver) => ({
+      id: driver.id,
+      userId: driver.userId,
+      fullName: driver.user.fullName,
+      email: driver.user.email,
+      taxiParkId: driver.taxiParkId,
+      assignedCar: driver.assignedCar,
+    })) as DriverListItemDto[];
   }
 
   async search(userId: string, query: SearchDriversQueryDto) {
@@ -172,9 +197,39 @@ export class DriversService {
   async assignCar(userId: string, driverId: string, dto: AssignCarDto) {
     const driver = await this.assertDirectorDriverAccess(userId, driverId);
     if (!driver.taxiParkId) throw new BadRequestException("Driver has no taxi park");
+    if (dto.carId === undefined) throw new BadRequestException("carId is required");
 
+    if (dto.carId === null) {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const existingDriver = await tx.driver.findUnique({
+          where: { id: driverId },
+          select: { assignedCarId: true, taxiParkId: true },
+        });
+        if (!existingDriver) throw new NotFoundException("Driver not found");
+        if (existingDriver.taxiParkId !== driver.taxiParkId) {
+          throw new BadRequestException("Driver must belong to same taxi park");
+        }
+
+        return tx.driver.update({
+          where: { id: driverId },
+          data: { assignedCarId: null },
+        });
+      });
+
+      await this.actionLogs.createLog(
+        userId,
+        LOG_EVENTS.ASSIGN_CAR,
+        `Unassign car from driver ${driverId}`,
+        driver.taxiParkId,
+        { driverId, carId: null },
+      );
+
+      return updated;
+    }
+
+    const carId = dto.carId;
     const car = await this.prisma.car.findUnique({
-      where: { id: dto.carId },
+      where: { id: carId },
       select: {
         id: true,
         taxiParkId: true,
@@ -190,10 +245,8 @@ export class DriversService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const existingCar = await tx.car.findUnique({
-        where: { id: dto.carId },
-        select: {
-          id: true,
-          taxiParkId: true,
+        where: { id: carId },
+        include: {
           assignedDriver: { select: { id: true } },
         },
       });

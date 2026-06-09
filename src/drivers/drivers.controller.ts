@@ -14,6 +14,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
 import { ROLE } from "../shared/types/roles";
 import { AssignCarDto } from "./dto/assign-car.dto";
+import { DriverListItemDto } from "./dto/driver-list-item.dto";
 import { DriverSearchItemDto } from "./dto/driver-search-item.dto";
 import { DriverMeResponseDto } from "./dto/get-driver-me-response.dto";
 import { SearchDriversQueryDto } from "./dto/search-drivers-query.dto";
@@ -28,6 +29,7 @@ export class DriversController {
 
   @Get()
   @Roles(ROLE.DIRECTOR)
+  @ApiOkResponse({ type: DriverListItemDto, isArray: true })
   @ApiOperation({ summary: "Список водителей" })
   list(@Req() req: RequestWithCurrentUser) {
     return this.service.list(req.currentUser.id);

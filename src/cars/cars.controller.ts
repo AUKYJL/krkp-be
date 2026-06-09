@@ -13,6 +13,8 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
 import { ROLE } from "../shared/types/roles";
 import { CarsService } from "./cars.service";
+import { AssignDriverDto } from "./dto/assign-driver.dto";
+import { CarListItemDto } from "./dto/car-list-item.dto";
 import { CreateCarDto } from "./dto/create-car.dto";
 import { UpdateCarDto } from "./dto/update-car.dto";
 import { UpdateCarStateDto } from "./dto/update-car-state.dto";
@@ -36,6 +38,7 @@ export class CarsController {
 
   @Get("taxi-parks/:taxiParkId/cars")
   @Roles(ROLE.DIRECTOR)
+  @ApiOkResponse({ type: CarListItemDto, isArray: true })
   @ApiOperation({ summary: "Список авто таксопарка" })
   listByTaxiPark(
     @Req() req: RequestWithCurrentUser,
@@ -83,6 +86,17 @@ export class CarsController {
     @Body() dto: UpdateCarStateDto,
   ) {
     return this.service.updateState(req.currentUser.id, id, dto.state);
+  }
+
+  @Post("cars/:carId/assign-driver")
+  @Roles(ROLE.DIRECTOR)
+  @ApiOperation({ summary: "Назначить водителя на авто" })
+  assignDriver(
+    @Req() req: RequestWithCurrentUser,
+    @Param("carId") carId: string,
+    @Body() dto: AssignDriverDto,
+  ) {
+    return this.service.assignDriver(req.currentUser.id, carId, dto);
   }
 
   @Delete("cars/:id")

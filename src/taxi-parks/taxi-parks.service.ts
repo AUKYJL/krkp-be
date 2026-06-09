@@ -7,6 +7,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ActionLogsService } from "../action-logs/action-logs.service";
 import { LOG_EVENTS } from "../shared/consts/log-events";
 import { CreateTaxiParkDto } from "./dto/create-taxi-park.dto";
+import { TaxiParkDriverItemDto } from "./dto/taxi-park-driver-item.dto";
 import { UpdateTaxiParkDto } from "./dto/update-taxi-park.dto";
 
 @Injectable()
@@ -64,6 +65,41 @@ export class TaxiParksService {
     if (!taxiPark) throw new NotFoundException("Taxi park not found");
     if (taxiPark.directorId !== directorId) throw new ForbiddenException();
     return taxiPark;
+  }
+
+  async listDrivers(userId: string, taxiParkId: string) {
+    const directorId = await this.getDirectorIdByUserId(userId);
+    const taxiPark = await this.prisma.taxiPark.findUnique({
+      where: { id: taxiParkId },
+    });
+    if (!taxiPark) throw new NotFoundException("Taxi park not found");
+    if (taxiPark.directorId !== directorId) throw new ForbiddenException();
+
+    return this.prisma.driver
+      .findMany({
+        where: { taxiParkId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+      })
+      .then((drivers) =>
+        drivers.map(
+          (driver): TaxiParkDriverItemDto => ({
+            driverId: driver.id,
+            userId: driver.user.id,
+            fullName: driver.user.fullName,
+            email: driver.user.email,
+          }),
+        ),
+      );
   }
 
   async update(userId: string, id: string, dto: UpdateTaxiParkDto) {
