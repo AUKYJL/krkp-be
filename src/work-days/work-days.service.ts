@@ -41,20 +41,31 @@ export class WorkDaysService {
 
     const car = await this.prisma.car.findUnique({
       where: { id: driver.assignedCarId },
-      select: { id: true, state: true },
+      select: { id: true, state: true, taxiParkId: true },
     });
     if (!car) throw new NotFoundException("Car not found");
 
-    const carOnLine = dto.carOnLine ?? true;
-    const shouldForceZeroRevenue =
-      !carOnLine || car.state === CarState.EMERGENCY || car.state === CarState.REPAIR;
-    const revenue = shouldForceZeroRevenue ? 0 : dto.revenue ?? 0;
+    if (driver.taxiParkId && car.taxiParkId !== driver.taxiParkId) {
+      throw new BadRequestException("Car must belong to driver's taxi park");
+    }
+
+    const activeWorkDay = await this.prisma.workDay.findFirst({
+      where: { driverId: driver.id, finishedAt: null },
+      select: { id: true },
+    });
+    if (activeWorkDay) {
+      throw new BadRequestException("Driver already has an active shift");
+    }
+
+    const carOnLine = car.state === CarState.WORKING;
+    const revenue = carOnLine ? dto.revenue ?? 0 : 0;
 
     const workDay = await this.prisma.workDay.create({
       data: {
         driverId: driver.id,
         carId: car.id,
-        workDate: new Date(dto.workDate),
+        workDate: new Date(),
+        startedAt: new Date(),
         revenue,
         carOnLine,
       },
@@ -75,7 +86,7 @@ export class WorkDaysService {
     const driver = await this.getDriverIdByUserId(userId);
     return this.prisma.workDay.findMany({
       where: { driverId: driver.id },
-      orderBy: { workDate: "desc" },
+      orderBy: { startedAt: "desc" },
     });
   }
 
@@ -89,28 +100,22 @@ export class WorkDaysService {
 
   async updateMy(userId: string, id: string, dto: UpdateWorkDayDto) {
     const existing = await this.getMy(userId, id);
-
-    // TODO: enforce "edit only current day"
     const driver = await this.getDriverIdByUserId(userId);
+    if (existing.finishedAt) {
+      throw new BadRequestException("Shift is already finished");
+    }
     const car = await this.prisma.car.findUnique({
       where: { id: existing.carId },
       select: { state: true },
     });
     if (!car) throw new NotFoundException("Car not found");
 
-    const nextCarOnLine = dto.carOnLine ?? existing.carOnLine;
-    const shouldForceZeroRevenue =
-      !nextCarOnLine || car.state === CarState.EMERGENCY || car.state === CarState.REPAIR;
-
-    const nextRevenue = shouldForceZeroRevenue
-      ? 0
-      : dto.revenue ?? Number(existing.revenue);
+    const nextRevenue =
+      car.state === CarState.WORKING ? dto.revenue ?? Number(existing.revenue) : 0;
 
     const updated = await this.prisma.workDay.update({
       where: { id },
       data: {
-        workDate: dto.workDate ? new Date(dto.workDate) : undefined,
-        carOnLine: dto.carOnLine,
         revenue: nextRevenue,
       },
     });
@@ -121,6 +126,33 @@ export class WorkDaysService {
       `Update work day ${updated.id}`,
       driver.taxiParkId ?? undefined,
       { workDayId: updated.id },
+    );
+
+    return updated;
+  }
+
+  async finishMy(userId: string, id: string) {
+    const existing = await this.getMy(userId, id);
+    if (existing.finishedAt) {
+      throw new BadRequestException("Shift is already finished");
+    }
+
+    const driver = await this.getDriverIdByUserId(userId);
+    const finishedAt = new Date();
+    const updated = await this.prisma.workDay.update({
+      where: { id },
+      data: {
+        finishedAt,
+        carOnLine: false,
+      },
+    });
+
+    await this.actionLogs.createLog(
+      userId,
+      LOG_EVENTS.FINISH_WORK_DAY,
+      `Finish work day ${updated.id}`,
+      driver.taxiParkId ?? undefined,
+      { workDayId: updated.id, finishedAt },
     );
 
     return updated;

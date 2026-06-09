@@ -256,6 +256,13 @@ type CarAnalyticsRevenueByDayEntry = {
   carOnLine: boolean;
 };
 
+type DriverAnalyticsDayBucket = {
+  date: string;
+  revenue: number;
+  hasOnlineShift: boolean;
+  hasAnyShift: boolean;
+};
+
 type DriverWorkDayWithCar = Prisma.WorkDayGetPayload<{
   include: {
     car: true;
@@ -2028,11 +2035,15 @@ export class AnalyticsService {
     taxiParkWorkDays: WorkDayWithRelations[],
   ): GetDriverAnalyticsResponseDto {
     let totalRevenue = 0;
-    let onlineDaysCount = 0;
-    let downtimeDaysCount = 0;
-
+    const dayBuckets = new Map<string, DriverAnalyticsDayBucket>();
     const revenueByDayMap = new Map<string, CarAnalyticsRevenueByDayEntry>();
     for (const date of this.getDateRange(period.from, period.to)) {
+      dayBuckets.set(date, {
+        date,
+        revenue: 0,
+        hasOnlineShift: false,
+        hasAnyShift: false,
+      });
       revenueByDayMap.set(date, {
         date,
         revenue: 0,
@@ -2043,23 +2054,42 @@ export class AnalyticsService {
     for (const workDay of workDays) {
       const date = this.formatDate(workDay.workDate);
       const revenue = Number(workDay.revenue);
+      const dayBucket = dayBuckets.get(date);
+      const revenueByDayEntry = revenueByDayMap.get(date);
 
       totalRevenue += revenue;
 
-      if (workDay.carOnLine) {
+      if (dayBucket) {
+        dayBucket.revenue += revenue;
+        dayBucket.hasAnyShift = true;
+        dayBucket.hasOnlineShift ||= workDay.carOnLine;
+      }
+
+      if (revenueByDayEntry) {
+        revenueByDayEntry.revenue += revenue;
+        if (workDay.carOnLine) {
+          revenueByDayEntry.carOnLine = true;
+        }
+      }
+    }
+
+    let workDaysCount = 0;
+    let onlineDaysCount = 0;
+    let downtimeDaysCount = 0;
+
+    for (const dayBucket of dayBuckets.values()) {
+      if (!dayBucket.hasAnyShift) {
+        continue;
+      }
+
+      workDaysCount += 1;
+      if (dayBucket.hasOnlineShift) {
         onlineDaysCount += 1;
       } else {
         downtimeDaysCount += 1;
       }
-
-      revenueByDayMap.set(date, {
-        date,
-        revenue: this.roundMoney(revenue),
-        carOnLine: workDay.carOnLine,
-      });
     }
 
-    const workDaysCount = workDays.length;
     const averageRevenuePerShift = this.safeDivide(totalRevenue, onlineDaysCount);
     const averageRevenuePerDay = this.safeDivide(totalRevenue, period.daysCount);
     const activityRate = this.safeDivide(onlineDaysCount * 100, period.daysCount);
@@ -2218,7 +2248,10 @@ export class AnalyticsService {
         ),
       },
       charts: {
-        revenueByDay: Array.from(revenueByDayMap.values()),
+        revenueByDay: Array.from(revenueByDayMap.values()).map((entry) => ({
+          ...entry,
+          revenue: this.roundMoney(entry.revenue),
+        })),
       },
       workDays: workDays.map((workDay) => ({
         workDayId: workDay.id,

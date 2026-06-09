@@ -44,6 +44,16 @@ export class CarsController {
     return this.service.listByTaxiPark(req.currentUser.id, taxiParkId);
   }
 
+  @Get("taxi-parks/:taxiParkId/cars/available")
+  @Roles(ROLE.DIRECTOR)
+  @ApiOperation({ summary: "Свободные авто таксопарка" })
+  listAvailableByTaxiPark(
+    @Req() req: RequestWithCurrentUser,
+    @Param("taxiParkId") taxiParkId: string,
+  ) {
+    return this.service.listAvailableByTaxiPark(req.currentUser.id, taxiParkId);
+  }
+
   @Get("cars/:id")
   @Roles(ROLE.DIRECTOR, ROLE.DRIVER)
   @ApiOperation({ summary: "Получить авто по id" })
@@ -83,4 +93,3 @@ export class CarsController {
     return this.service.remove(req.currentUser.id, id);
   }
 }
-

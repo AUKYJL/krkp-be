@@ -15,6 +15,7 @@ import { RequestWithCurrentUser } from "../shared/types/requestWithUser";
 import { ROLE } from "../shared/types/roles";
 import { AssignCarDto } from "./dto/assign-car.dto";
 import { DriverSearchItemDto } from "./dto/driver-search-item.dto";
+import { DriverMeResponseDto } from "./dto/get-driver-me-response.dto";
 import { SearchDriversQueryDto } from "./dto/search-drivers-query.dto";
 import { UpdateDriverDto } from "./dto/update-driver.dto";
 import { DriversService } from "./drivers.service";
@@ -42,6 +43,7 @@ export class DriversController {
 
   @Get("me")
   @Roles(ROLE.DRIVER)
+  @ApiOkResponse({ type: DriverMeResponseDto })
   @ApiOperation({ summary: "Профиль водителя (me)" })
   getMe(@Req() req: RequestWithCurrentUser) {
     return this.service.getMe(req.currentUser.id);

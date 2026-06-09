@@ -142,9 +142,11 @@ model Car {
 model WorkDay {
   id String @id @default(uuid())
 
-  workDate  DateTime
-  revenue   Decimal  @default(0)
-  carOnLine Boolean  @default(true)
+  workDate   DateTime
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  revenue    Decimal  @default(0)
+  carOnLine  Boolean  @default(true)
 
   driverId String
   driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)

@@ -39,6 +39,14 @@ export class CarsService {
     await this.assertDirectorTaxiParkAccess(userId, taxiParkId);
     const car = await this.prisma.car.create({
       data: { ...dto, taxiParkId, state: dto.state ?? CarState.WORKING },
+      include: {
+        assignedDriver: {
+          select: {
+            id: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+      },
     });
     await this.actionLogs.createLog(
       userId,
@@ -55,6 +63,33 @@ export class CarsService {
     return this.prisma.car.findMany({
       where: { taxiParkId },
       orderBy: { createdAt: "desc" },
+      include: {
+        assignedDriver: {
+          select: {
+            id: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+      },
+    });
+  }
+
+  async listAvailableByTaxiPark(userId: string, taxiParkId: string) {
+    await this.assertDirectorTaxiParkAccess(userId, taxiParkId);
+    return this.prisma.car.findMany({
+      where: {
+        taxiParkId,
+        assignedDriver: null,
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        assignedDriver: {
+          select: {
+            id: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+      },
     });
   }
 
@@ -62,7 +97,15 @@ export class CarsService {
     const directorId = await this.getDirectorIdByUserId(userId);
     const car = await this.prisma.car.findUnique({
       where: { id: carId },
-      include: { taxiPark: { select: { directorId: true } } },
+      include: {
+        taxiPark: { select: { directorId: true } },
+        assignedDriver: {
+          select: {
+            id: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+      },
     });
     if (!car) throw new NotFoundException("Car not found");
     if (car.taxiPark.directorId !== directorId) throw new ForbiddenException();
@@ -86,6 +129,14 @@ export class CarsService {
     const updated = await this.prisma.car.update({
       where: { id: carId },
       data: dto,
+      include: {
+        assignedDriver: {
+          select: {
+            id: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+      },
     });
     await this.actionLogs.createLog(
       userId,
@@ -102,6 +153,14 @@ export class CarsService {
     const updated = await this.prisma.car.update({
       where: { id: carId },
       data: { state },
+      include: {
+        assignedDriver: {
+          select: {
+            id: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+      },
     });
     await this.actionLogs.createLog(
       userId,

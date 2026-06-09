@@ -15,7 +15,7 @@ export class WorkDaysController {
 
   @Post("work-days")
   @Roles(ROLE.DRIVER)
-  @ApiOperation({ summary: "Создать дневную запись" })
+  @ApiOperation({ summary: "Начать смену" })
   create(@Req() req: RequestWithCurrentUser, @Body() dto: CreateWorkDayDto) {
     return this.service.create(req.currentUser.id, dto);
   }
@@ -36,13 +36,20 @@ export class WorkDaysController {
 
   @Patch("work-days/:id")
   @Roles(ROLE.DRIVER)
-  @ApiOperation({ summary: "Обновить мою дневную запись" })
+  @ApiOperation({ summary: "Обновить активную смену" })
   updateMy(
     @Req() req: RequestWithCurrentUser,
     @Param("id") id: string,
     @Body() dto: UpdateWorkDayDto,
   ) {
     return this.service.updateMy(req.currentUser.id, id, dto);
+  }
+
+  @Post("work-days/:id/finish")
+  @Roles(ROLE.DRIVER)
+  @ApiOperation({ summary: "Завершить смену" })
+  finishMy(@Req() req: RequestWithCurrentUser, @Param("id") id: string) {
+    return this.service.finishMy(req.currentUser.id, id);
   }
 
   @Get("drivers/:driverId/work-days")
@@ -62,4 +69,3 @@ export class WorkDaysController {
     return this.service.listByCar(req.currentUser.id, carId);
   }
 }
-

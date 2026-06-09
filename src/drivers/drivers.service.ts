@@ -106,9 +106,44 @@ export class DriversService {
   async getMe(userId: string) {
     const driver = await this.prisma.driver.findUnique({
       where: { userId },
+      include: {
+        user: { select: { id: true, fullName: true, email: true, role: true } },
+        taxiPark: { select: { id: true, name: true, address: true } },
+        assignedCar: {
+          select: {
+            id: true,
+            firm: true,
+            model: true,
+            type: true,
+            plateNumber: true,
+            state: true,
+            taxiParkId: true,
+          },
+        },
+        workDays: {
+          where: { finishedAt: null },
+          orderBy: { startedAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            workDate: true,
+            startedAt: true,
+            finishedAt: true,
+            revenue: true,
+            carOnLine: true,
+            carId: true,
+            updatedAt: true,
+          },
+        },
+      },
     });
     if (!driver) throw new NotFoundException("Driver not found");
-    return driver;
+    const activeWorkDay = driver.workDays[0] ?? null;
+    return {
+      ...driver,
+      isOnLine: Boolean(activeWorkDay),
+      activeWorkDay,
+    };
   }
 
   async update(userId: string, driverId: string, dto: UpdateDriverDto) {
@@ -138,7 +173,11 @@ export class DriversService {
 
     const car = await this.prisma.car.findUnique({
       where: { id: dto.carId },
-      select: { id: true, taxiParkId: true, assignedDriver: { select: { id: true } } },
+      select: {
+        id: true,
+        taxiParkId: true,
+        assignedDriver: { select: { id: true } },
+      },
     });
     if (!car) throw new NotFoundException("Car not found");
     if (car.taxiParkId !== driver.taxiParkId) {
@@ -147,9 +186,35 @@ export class DriversService {
     if (car.assignedDriver) throw new BadRequestException("Car already assigned");
     if (driver.assignedCarId) throw new BadRequestException("Driver already has car");
 
-    const updated = await this.prisma.driver.update({
-      where: { id: driverId },
-      data: { assignedCarId: dto.carId },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const existingCar = await tx.car.findUnique({
+        where: { id: dto.carId },
+        select: {
+          id: true,
+          taxiParkId: true,
+          assignedDriver: { select: { id: true } },
+        },
+      });
+      if (!existingCar) throw new NotFoundException("Car not found");
+      if (existingCar.taxiParkId !== driver.taxiParkId) {
+        throw new BadRequestException("Car must belong to same taxi park");
+      }
+      if (existingCar.assignedDriver) throw new BadRequestException("Car already assigned");
+
+      const existingDriver = await tx.driver.findUnique({
+        where: { id: driverId },
+        select: { assignedCarId: true, taxiParkId: true },
+      });
+      if (!existingDriver) throw new NotFoundException("Driver not found");
+      if (existingDriver.taxiParkId !== driver.taxiParkId) {
+        throw new BadRequestException("Driver must belong to same taxi park");
+      }
+      if (existingDriver.assignedCarId) throw new BadRequestException("Driver already has car");
+
+      return tx.driver.update({
+        where: { id: driverId },
+        data: { assignedCarId: dto.carId },
+      });
     });
 
     await this.actionLogs.createLog(
