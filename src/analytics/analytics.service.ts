@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Car, Driver, Prisma, User, UserRole } from "@prisma/client";
+import { WorkDayStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { GetDirectorDashboardQueryDto } from "./dto/get-director-dashboard-query.dto";
 import { GetDirectorDashboardResponseDto } from "./dto/get-director-dashboard-response.dto";
@@ -39,6 +40,9 @@ type WorkDayWithRelations = Prisma.WorkDayGetPayload<{
     car: true;
   };
 }>;
+
+const isOnlineWorkDay = (workDay: { status: WorkDayStatus; revenue: Prisma.Decimal }) =>
+  workDay.status !== WorkDayStatus.DOWNTIME;
 
 type DriverWithUser = Driver & {
   user: User;
@@ -539,7 +543,7 @@ export class AnalyticsService {
 
       totalRevenue += revenue;
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         onlineDaysCount += 1;
       } else {
         downtimeDaysCount += 1;
@@ -548,7 +552,7 @@ export class AnalyticsService {
       revenueByDayMap.set(date, {
         date,
         revenue: this.roundMoney(revenue),
-        carOnLine: workDay.carOnLine,
+        carOnLine: isOnlineWorkDay(workDay),
       });
     }
 
@@ -574,7 +578,7 @@ export class AnalyticsService {
 
     for (const workDay of taxiParkWorkDays) {
       taxiParkTotalRevenue += Number(workDay.revenue);
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         taxiParkOnlineDaysCount += 1;
       }
 
@@ -584,7 +588,7 @@ export class AnalyticsService {
       }
 
       brandStat.totalRevenue += Number(workDay.revenue);
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         brandStat.onlineDaysCount += 1;
       } else {
         brandStat.downtimeDaysCount += 1;
@@ -700,7 +704,8 @@ export class AnalyticsService {
         workDayId: workDay.id,
         date: this.formatDate(workDay.workDate),
         revenue: this.roundMoney(Number(workDay.revenue)),
-        carOnLine: workDay.carOnLine,
+        carOnLine: isOnlineWorkDay(workDay),
+        status: workDay.status,
         driver: {
           driverId: workDay.driver.id,
           fullName: workDay.driver.user.fullName,
@@ -784,7 +789,7 @@ export class AnalyticsService {
 
       brandStat.totalRevenue += Number(workDay.revenue);
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         brandStat.onlineDaysCount += 1;
       } else {
         brandStat.downtimeDaysCount += 1;
@@ -1064,7 +1069,7 @@ export class AnalyticsService {
       const revenue = Number(workDay.revenue);
       totalRevenue += revenue;
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         onlineDaysCount += 1;
       } else {
         downtimeDaysCount += 1;
@@ -1073,7 +1078,7 @@ export class AnalyticsService {
       return {
         date: this.formatDate(workDay.workDate),
         revenue: this.roundMoney(revenue),
-        carOnLine: workDay.carOnLine,
+        carOnLine: isOnlineWorkDay(workDay),
       };
     });
 
@@ -1165,14 +1170,14 @@ export class AnalyticsService {
 
       if (entry) {
         entry.revenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           entry.onlineCarsCount += 1;
         } else {
           entry.downtimeCarsCount += 1;
         }
       }
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         onlineDaysCount += 1;
       } else {
         downtimeDaysCount += 1;
@@ -1259,7 +1264,7 @@ export class AnalyticsService {
 
       if (dayEntry) {
         dayEntry.revenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           dayEntry.onlineCarsCount += 1;
         } else {
           dayEntry.downtimeCarsCount += 1;
@@ -1270,7 +1275,7 @@ export class AnalyticsService {
         taxiParkEntry.revenue += revenue;
       }
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         onlineDaysCount += 1;
       } else {
         downtimeDaysCount += 1;
@@ -1362,7 +1367,7 @@ export class AnalyticsService {
       }
 
       brandStat.totalRevenue += Number(workDay.revenue);
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         brandStat.onlineDaysCount += 1;
       } else {
         brandStat.downtimeDaysCount += 1;
@@ -1575,7 +1580,7 @@ export class AnalyticsService {
       }
 
       driverStat.totalRevenue += Number(workDay.revenue);
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         driverStat.onlineDaysCount += 1;
       } else {
         driverStat.downtimeDaysCount += 1;
@@ -1662,7 +1667,7 @@ export class AnalyticsService {
         carStat.totalRevenue += revenue;
       }
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         onlineDaysCount += 1;
         if (carStat) {
           carStat.onlineDaysCount += 1;
@@ -1816,7 +1821,7 @@ export class AnalyticsService {
 
       if (dayEntry) {
         dayEntry.revenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           dayEntry.onlineCarsCount += 1;
         } else {
           dayEntry.downtimeCarsCount += 1;
@@ -1829,7 +1834,7 @@ export class AnalyticsService {
       const driverStat = driverStats.get(workDay.driverId);
       if (driverStat) {
         driverStat.totalRevenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           driverStat.onlineDaysCount += 1;
         } else {
           driverStat.downtimeDaysCount += 1;
@@ -1839,7 +1844,7 @@ export class AnalyticsService {
       const carStat = carStats.get(workDay.carId);
       if (carStat) {
         carStat.totalRevenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           carStat.onlineDaysCount += 1;
         } else {
           carStat.downtimeDaysCount += 1;
@@ -1849,14 +1854,14 @@ export class AnalyticsService {
       const brandStat = brandStats.get(workDay.car.firm);
       if (brandStat) {
         brandStat.totalRevenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           brandStat.onlineDaysCount += 1;
         } else {
           brandStat.downtimeDaysCount += 1;
         }
       }
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         onlineDaysCount += 1;
       } else {
         downtimeDaysCount += 1;
@@ -2062,12 +2067,12 @@ export class AnalyticsService {
       if (dayBucket) {
         dayBucket.revenue += revenue;
         dayBucket.hasAnyShift = true;
-        dayBucket.hasOnlineShift ||= workDay.carOnLine;
+        dayBucket.hasOnlineShift ||= isOnlineWorkDay(workDay);
       }
 
       if (revenueByDayEntry) {
         revenueByDayEntry.revenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           revenueByDayEntry.carOnLine = true;
         }
       }
@@ -2115,7 +2120,7 @@ export class AnalyticsService {
       taxiParkTotalRevenue += revenue;
       activeDriverIds.add(workDay.driverId);
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         taxiParkOnlineDaysCount += 1;
       }
 
@@ -2124,7 +2129,7 @@ export class AnalyticsService {
       }
 
       driverStat.totalRevenue += revenue;
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         driverStat.onlineDaysCount += 1;
       }
     }
@@ -2172,7 +2177,7 @@ export class AnalyticsService {
     const averageDailyRevenueForDriver = this.safeDivide(totalRevenue, onlineDaysCount);
     const daysWithRevenueAboveAverage = workDays.filter(
       (workDay) =>
-        workDay.carOnLine && Number(workDay.revenue) > averageDailyRevenueForDriver,
+        isOnlineWorkDay(workDay) && Number(workDay.revenue) > averageDailyRevenueForDriver,
     ).length;
     const revenueScore = this.safeDivide(totalRevenue * 100, maxDriverRevenue);
     const activityScore = this.safeDivide(onlineDaysCount * 100, period.daysCount);
@@ -2257,7 +2262,8 @@ export class AnalyticsService {
         workDayId: workDay.id,
         date: this.formatDate(workDay.workDate),
         revenue: this.roundMoney(Number(workDay.revenue)),
-        carOnLine: workDay.carOnLine,
+        carOnLine: isOnlineWorkDay(workDay),
+        status: workDay.status,
         car: {
           carId: workDay.car.id,
           firm: workDay.car.firm,
@@ -2396,7 +2402,7 @@ export class AnalyticsService {
 
       if (dayEntry) {
         dayEntry.revenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           dayEntry.onlineCarsCount += 1;
         } else {
           dayEntry.downtimeCarsCount += 1;
@@ -2406,7 +2412,7 @@ export class AnalyticsService {
       const driverStat = driverStats.get(workDay.driverId);
       if (driverStat) {
         driverStat.totalRevenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           driverStat.onlineDaysCount += 1;
         } else {
           driverStat.downtimeDaysCount += 1;
@@ -2416,7 +2422,7 @@ export class AnalyticsService {
       const carStat = carStats.get(workDay.carId);
       if (carStat) {
         carStat.totalRevenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           carStat.onlineDaysCount += 1;
         } else {
           carStat.downtimeDaysCount += 1;
@@ -2426,14 +2432,14 @@ export class AnalyticsService {
       const brandStat = brandStats.get(workDay.car.firm);
       if (brandStat) {
         brandStat.totalRevenue += revenue;
-        if (workDay.carOnLine) {
+        if (isOnlineWorkDay(workDay)) {
           brandStat.onlineDaysCount += 1;
         } else {
           brandStat.downtimeDaysCount += 1;
         }
       }
 
-      if (workDay.carOnLine) {
+      if (isOnlineWorkDay(workDay)) {
         onlineDaysCount += 1;
         aggregate && (aggregate.onlineDaysCount += 1);
       } else {
@@ -2443,7 +2449,7 @@ export class AnalyticsService {
     }
 
     for (const workDay of workDays) {
-      if (!workDay.carOnLine) {
+      if (!isOnlineWorkDay(workDay)) {
         continue;
       }
 

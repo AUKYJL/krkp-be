@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { CarState } from "@prisma/client";
+import { CarState, WorkDayStatus } from "@prisma/client";
 import { ActionLogsService } from "../action-logs/action-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LOG_EVENTS } from "../shared/consts/log-events";
@@ -50,7 +50,7 @@ export class WorkDaysService {
     }
 
     const activeWorkDay = await this.prisma.workDay.findFirst({
-      where: { driverId: driver.id, finishedAt: null },
+      where: { driverId: driver.id, status: WorkDayStatus.ACTIVE },
       select: { id: true },
     });
     if (activeWorkDay) {
@@ -68,6 +68,7 @@ export class WorkDaysService {
         startedAt: new Date(),
         revenue,
         carOnLine,
+        status: WorkDayStatus.ACTIVE,
       },
     });
 
@@ -101,7 +102,7 @@ export class WorkDaysService {
   async updateMy(userId: string, id: string, dto: UpdateWorkDayDto) {
     const existing = await this.getMy(userId, id);
     const driver = await this.getDriverIdByUserId(userId);
-    if (existing.finishedAt) {
+    if (existing.status !== WorkDayStatus.ACTIVE) {
       throw new BadRequestException("Shift is already finished");
     }
     const car = await this.prisma.car.findUnique({
@@ -133,17 +134,18 @@ export class WorkDaysService {
 
   async finishMy(userId: string, id: string) {
     const existing = await this.getMy(userId, id);
-    if (existing.finishedAt) {
+    if (existing.status !== WorkDayStatus.ACTIVE) {
       throw new BadRequestException("Shift is already finished");
     }
 
     const driver = await this.getDriverIdByUserId(userId);
     const finishedAt = new Date();
+    const revenue = Number(existing.revenue);
     const updated = await this.prisma.workDay.update({
       where: { id },
       data: {
         finishedAt,
-        carOnLine: false,
+        status: revenue > 0 ? WorkDayStatus.COMPLETED : WorkDayStatus.DOWNTIME,
       },
     });
 

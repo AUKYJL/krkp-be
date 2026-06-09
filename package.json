@@ -18,7 +18,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "seed:demo": "ts-node -r dotenv/config ./prisma/seed/demo.ts"
+    "seed:demo": "ts-node -r dotenv/config ./prisma/seed/demo.ts",
+    "db:reset:demo": "prisma migrate reset --force && npm run seed:demo"
   },
   "dependencies": {
     "@nestjs/bull": "^11.0.2",

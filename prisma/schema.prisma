@@ -45,6 +45,12 @@ enum InvitationStatus {
   CANCELLED
 }
 
+enum WorkDayStatus {
+  ACTIVE
+  COMPLETED
+  DOWNTIME
+}
+
 model User {
   id           String   @id @default(uuid())
   fullName     String
@@ -147,6 +153,7 @@ model WorkDay {
   finishedAt DateTime?
   revenue    Decimal  @default(0)
   carOnLine  Boolean  @default(true)
+  status     WorkDayStatus @default(ACTIVE)
 
   driverId String
   driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)

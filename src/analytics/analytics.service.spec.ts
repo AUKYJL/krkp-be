@@ -1,4 +1,4 @@
-import { UserRole } from "@prisma/client";
+import { UserRole, WorkDayStatus } from "@prisma/client";
 import { AnalyticsService } from "./analytics.service";
 
 describe("AnalyticsService driver dashboard aggregation", () => {
@@ -54,6 +54,7 @@ describe("AnalyticsService driver dashboard aggregation", () => {
         workDate: new Date("2026-06-01T08:00:00.000Z"),
         revenue: "100",
         carOnLine: true,
+        status: WorkDayStatus.COMPLETED,
         car: {
           id: "car-1",
           firm: "Toyota",
@@ -67,6 +68,7 @@ describe("AnalyticsService driver dashboard aggregation", () => {
         workDate: new Date("2026-06-01T18:00:00.000Z"),
         revenue: "250",
         carOnLine: false,
+        status: WorkDayStatus.DOWNTIME,
         car: {
           id: "car-1",
           firm: "Toyota",
@@ -108,6 +110,7 @@ describe("AnalyticsService driver dashboard aggregation", () => {
         workDate: new Date("2026-06-02T08:00:00.000Z"),
         revenue: "120",
         carOnLine: false,
+        status: WorkDayStatus.DOWNTIME,
         car: {
           id: "car-1",
           firm: "Toyota",
@@ -121,6 +124,7 @@ describe("AnalyticsService driver dashboard aggregation", () => {
         workDate: new Date("2026-06-02T14:00:00.000Z"),
         revenue: "80",
         carOnLine: true,
+        status: WorkDayStatus.COMPLETED,
         car: {
           id: "car-1",
           firm: "Toyota",
@@ -160,6 +164,7 @@ describe("AnalyticsService driver dashboard aggregation", () => {
         workDate: new Date("2026-06-03T08:00:00.000Z"),
         revenue: "0",
         carOnLine: false,
+        status: WorkDayStatus.DOWNTIME,
         car: {
           id: "car-1",
           firm: "Toyota",
@@ -173,6 +178,7 @@ describe("AnalyticsService driver dashboard aggregation", () => {
         workDate: new Date("2026-06-04T08:00:00.000Z"),
         revenue: "50",
         carOnLine: false,
+        status: WorkDayStatus.DOWNTIME,
         car: {
           id: "car-1",
           firm: "Toyota",

@@ -1,0 +1,4 @@
+CREATE TYPE "WorkDayStatus" AS ENUM ('ACTIVE', 'COMPLETED', 'DOWNTIME');
+
+ALTER TABLE "WorkDay"
+ADD COLUMN     "status" "WorkDayStatus" NOT NULL DEFAULT 'ACTIVE';

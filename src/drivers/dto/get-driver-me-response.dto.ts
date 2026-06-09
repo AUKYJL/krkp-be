@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { CarState } from "@prisma/client";
+import { CarState, WorkDayStatus } from "@prisma/client";
 import { ROLE } from "../../shared/types/roles";
 
 export class DriverMeUserDto {
@@ -68,6 +68,9 @@ export class DriverMeWorkDayDto {
 
   @ApiProperty()
   carOnLine: boolean;
+
+  @ApiProperty({ enum: WorkDayStatus })
+  status: WorkDayStatus;
 
   @ApiProperty()
   carId: string;

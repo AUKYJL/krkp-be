@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ActionLogsService } from "../action-logs/action-logs.service";
+import { WorkDayStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { LOG_EVENTS } from "../shared/consts/log-events";
 import { AssignCarDto } from "./dto/assign-car.dto";
@@ -121,7 +122,7 @@ export class DriversService {
           },
         },
         workDays: {
-          where: { finishedAt: null },
+          where: { status: WorkDayStatus.ACTIVE },
           orderBy: { startedAt: "desc" },
           take: 1,
           select: {
@@ -131,6 +132,7 @@ export class DriversService {
             finishedAt: true,
             revenue: true,
             carOnLine: true,
+            status: true,
             carId: true,
             updatedAt: true,
           },
@@ -141,7 +143,7 @@ export class DriversService {
     const activeWorkDay = driver.workDays[0] ?? null;
     return {
       ...driver,
-      isOnLine: Boolean(activeWorkDay),
+      isOnLine: Boolean(activeWorkDay && activeWorkDay.status === WorkDayStatus.ACTIVE),
       activeWorkDay,
     };
   }

@@ -1,4 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { WorkDayStatus } from "@prisma/client";
 import { CarState } from "@prisma/client";
 
 export class AnalyticsPeriodDto {
