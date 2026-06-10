@@ -113,7 +113,7 @@ describe("DriversService", () => {
   });
 
   describe("list", () => {
-    it("returns drivers with assigned cars only", async () => {
+    it("returns drivers with assigned cars and taxi park names", async () => {
       prisma.director.findUnique.mockResolvedValue({ id: "director-1" });
       prisma.driver.findMany.mockResolvedValue([
         {
@@ -124,6 +124,9 @@ describe("DriversService", () => {
             email: "ivan@example.com",
           },
           taxiParkId: "park-1",
+          taxiPark: {
+            name: "Central Park Fleet",
+          },
           assignedCar: {
             id: "car-1",
             firm: "Toyota",
@@ -151,6 +154,11 @@ describe("DriversService", () => {
             },
           },
           taxiParkId: true,
+          taxiPark: {
+            select: {
+              name: true,
+            },
+          },
           assignedCar: {
             select: {
               id: true,
@@ -171,6 +179,7 @@ describe("DriversService", () => {
           fullName: "Иван Иванов",
           email: "ivan@example.com",
           taxiParkId: "park-1",
+          taxiParkName: "Central Park Fleet",
           assignedCar: {
             id: "car-1",
             firm: "Toyota",
@@ -180,6 +189,37 @@ describe("DriversService", () => {
             state: "WORKING",
             taxiParkId: "park-1",
           },
+        },
+      ]);
+    });
+
+    it("returns null taxi park name when the relation is absent", async () => {
+      prisma.director.findUnique.mockResolvedValue({ id: "director-1" });
+      prisma.driver.findMany.mockResolvedValue([
+        {
+          id: "driver-2",
+          userId: "user-2",
+          user: {
+            fullName: "Петр Петров",
+            email: "petr@example.com",
+          },
+          taxiParkId: "park-2",
+          taxiPark: null,
+          assignedCar: null,
+        },
+      ]);
+
+      const result = await service.list("director-user-1");
+
+      expect(result).toEqual([
+        {
+          id: "driver-2",
+          userId: "user-2",
+          fullName: "Петр Петров",
+          email: "petr@example.com",
+          taxiParkId: "park-2",
+          taxiParkName: null,
+          assignedCar: null,
         },
       ]);
     });

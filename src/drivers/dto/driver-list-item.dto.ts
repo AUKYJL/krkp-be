@@ -40,6 +40,9 @@ export class DriverListItemDto {
   @ApiPropertyOptional({ nullable: true })
   taxiParkId?: string | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  taxiParkName?: string | null;
+
   @ApiProperty({ type: DriverListAssignedCarDto, nullable: true })
   assignedCar?: DriverListAssignedCarDto | null;
 }

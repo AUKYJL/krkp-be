@@ -53,6 +53,7 @@ export class DriversService {
         userId: true,
         user: { select: { fullName: true, email: true } },
         taxiParkId: true,
+        taxiPark: { select: { name: true } },
         assignedCar: {
           select: {
             id: true,
@@ -72,6 +73,7 @@ export class DriversService {
       fullName: driver.user.fullName,
       email: driver.user.email,
       taxiParkId: driver.taxiParkId,
+      taxiParkName: driver.taxiPark?.name ?? null,
       assignedCar: driver.assignedCar,
     })) as DriverListItemDto[];
   }

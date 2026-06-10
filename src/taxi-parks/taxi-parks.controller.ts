@@ -122,6 +122,7 @@ export class TaxiParksController {
   }
 
   @Get(":taxiParkId/cars/:carId/analytics")
+  @Roles(ROLE.DIRECTOR, ROLE.DRIVER)
   @ApiOkResponse({ type: GetCarAnalyticsResponseDto })
   @ApiOperation({ summary: "Аналитика по конкретному автомобилю за период" })
   getCarAnalytics(
