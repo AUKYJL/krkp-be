@@ -120,12 +120,7 @@ export class TaxiParksService {
   async remove(userId: string, id: string) {
     await this.get(userId, id);
     const taxiPark = await this.prisma.taxiPark.delete({ where: { id } });
-    await this.actionLogs.createLog(
-      userId,
-      LOG_EVENTS.DELETE_TAXI_PARK,
-      `Delete taxi park ${taxiPark.name}`,
-      taxiPark.id,
-    );
+
     return taxiPark;
   }
 }
